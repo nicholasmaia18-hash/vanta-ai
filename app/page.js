@@ -128,6 +128,7 @@ export default function Home() {
   const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState(null);
   const [pendingRenameConversationId, setPendingRenameConversationId] = useState(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [showPromptEditor, setShowPromptEditor] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -582,6 +583,8 @@ export default function Home() {
   const hasStreamingPlaceholder = messages.some(
     (message) => message.role === "assistant" && !message.content?.trim()
   );
+  const hasCustomPrompt =
+    activeSystemPrompt.trim() !== DEFAULT_SYSTEM_PROMPT.trim();
 
   const buttonLabel =
     cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Send";
@@ -676,7 +679,7 @@ export default function Home() {
                 </p>
                 <button
                   onClick={createNewConversation}
-                  className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-white/80 transition hover:bg-white/[0.09]"
+                  className="rounded-[0.95rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-white/80 transition hover:bg-white/[0.09]"
                 >
                   New
                 </button>
@@ -765,7 +768,7 @@ export default function Home() {
                   <select
                     value={activeModel}
                     onChange={(event) => changeModel(event.target.value)}
-                    className="rounded-full border border-white/10 bg-[#090410] px-3 py-2 text-sm text-white/70 outline-none"
+                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 outline-none"
                   >
                     {MODEL_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -775,52 +778,71 @@ export default function Home() {
                   </select>
                   <button
                     onClick={shareConversation}
-                    className="rounded-full border border-white/10 bg-[#090410] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Share
                   </button>
                   <button
                     onClick={exportConversation}
-                    className="rounded-full border border-white/10 bg-[#090410] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Export
                   </button>
                   <button
                     onClick={resetConversation}
-                    className="rounded-full border border-white/10 bg-[#090410] px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Reset
                   </button>
                   {cooldown > 0 && (
-                    <div className="rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-2 text-sm text-violet-200">
+                    <div className="rounded-[1rem] border border-violet-400/20 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
                       Wait {cooldown}s
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+              <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
                 <div className="flex flex-wrap gap-2">
                   {PROMPT_PRESETS.map((preset) => (
                     <button
                       key={preset.label}
                       onClick={() => applyPreset(preset.value)}
-                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white/65 transition hover:bg-white/[0.08]"
+                      className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/65 transition hover:bg-white/[0.08]"
                     >
                       {preset.label}
                     </button>
                   ))}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-white/65 transition hover:bg-white/[0.08]"
+                    className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/65 transition hover:bg-white/[0.08]"
                   >
                     Attach files
                   </button>
                 </div>
 
-                <div className="rounded-[1.4rem] border border-white/10 bg-[#090410] p-4">
+                <div className="rounded-[1.25rem] border border-white/10 bg-[#090410] p-4">
                   <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
-                    System prompt
+                    Assistant settings
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-white/52">
+                    {hasCustomPrompt
+                      ? "Custom instructions are active for this conversation."
+                      : "Using the default Vanta behavior."}
+                  </p>
+                  <button
+                    onClick={() => setShowPromptEditor((current) => !current)}
+                    className="mt-4 w-full rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.08]"
+                  >
+                    {showPromptEditor ? "Hide instructions" : "Edit instructions"}
+                  </button>
+                </div>
+              </div>
+
+              {showPromptEditor && (
+                <div className="rounded-[1.25rem] border border-white/10 bg-[#090410] p-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
+                    Conversation instructions
                   </p>
                   <textarea
                     value={activeSystemPrompt}
@@ -829,7 +851,7 @@ export default function Home() {
                     className="mt-3 w-full resize-none rounded-[1rem] border border-white/10 bg-transparent px-3 py-3 text-sm leading-6 text-white/78 outline-none placeholder:text-white/25"
                   />
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="mb-4 flex flex-wrap gap-3 text-sm text-white/45">
@@ -848,10 +870,15 @@ export default function Home() {
                 {pendingAttachments.map((attachment) => (
                   <div
                     key={attachment.id}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-white/70"
+                    className="inline-flex items-center gap-2 rounded-[0.9rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-white/70"
                   >
                     <span>{attachment.name}</span>
-                    <button onClick={() => removeAttachment(attachment.id)}>x</button>
+                    <button
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="text-white/45 transition hover:text-white/75"
+                    >
+                      x
+                    </button>
                   </div>
                 ))}
               </div>
