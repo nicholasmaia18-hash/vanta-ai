@@ -9,6 +9,9 @@ const client = new OpenAI({
 const DEFAULT_SYSTEM_PROMPT =
   "You are Vanta, a clear, helpful AI assistant inside a minimalist web app. Keep responses concise but useful. Use short paragraphs by default. Use flat bullet lists only when they genuinely improve clarity. When giving steps, prefer brief numbered lists. If code helps, include small clean code blocks with a short explanation. Avoid filler, hype, and overly casual phrasing.";
 
+const RESEARCH_PROMPT =
+  "Research mode is enabled. Use the provided search context when available, cite sources inline with markdown links, separate confirmed facts from uncertainty, and say plainly when the search context is thin or inconclusive.";
+
 function sanitizeAttachments(attachments = []) {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
 
@@ -65,19 +68,103 @@ function sanitizeMessages(messages = []) {
     });
 }
 
-function buildRequest(messages, selectedModel, systemPrompt) {
+function getLatestUserQuery(messages = []) {
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message?.role === "user" && typeof message.content === "string");
+
+  return latestUserMessage?.content?.trim() || "";
+}
+
+function flattenTopics(topics = [], items = []) {
+  for (const topic of topics) {
+    if (topic?.Topics) {
+      flattenTopics(topic.Topics, items);
+      continue;
+    }
+
+    if (topic?.Text) {
+      items.push({
+        title: topic.Text.split(" - ")[0] || "Result",
+        snippet: topic.Text,
+        url: topic.FirstURL || null,
+      });
+    }
+  }
+
+  return items;
+}
+
+async function fetchResearchContext(query) {
+  if (!query || query.length < 3) return [];
+  try {
+    const response = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(
+        query
+      )}&format=json&no_html=1&skip_disambig=1`,
+      {
+        headers: {
+          "User-Agent": "Vanta Research Mode",
+        },
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const items = [];
+
+    if (data.AbstractText) {
+      items.push({
+        title: data.Heading || "DuckDuckGo",
+        snippet: data.AbstractText,
+        url: data.AbstractURL || null,
+      });
+    }
+
+    flattenTopics(data.RelatedTopics || [], items);
+
+    return items.slice(0, 5);
+  } catch {
+    return [];
+  }
+}
+
+function buildResearchContext(results = []) {
+  if (!results.length) return null;
+
+  return [
+    "Web research context:",
+    ...results.map((result, index) =>
+      `${index + 1}. ${result.title}: ${result.snippet}${result.url ? ` (${result.url})` : ""}`
+    ),
+  ].join("\n");
+}
+
+async function buildRequest(messages, selectedModel, systemPrompt, researchMode) {
   const primaryModel =
     selectedModel || process.env.SHUTTLEAI_MODEL || "openai/gpt-5.4";
   const fallbackModel = process.env.SHUTTLEAI_FALLBACK_MODEL || null;
+  const researchQuery = researchMode ? getLatestUserQuery(messages) : "";
+  const researchResults = researchMode ? await fetchResearchContext(researchQuery) : [];
+  const researchContext = buildResearchContext(researchResults);
 
   return {
     primaryModel,
     fallbackModel,
+    researchResults,
     requestBody: {
       messages: [
         {
           role: "system",
-          content: systemPrompt || DEFAULT_SYSTEM_PROMPT,
+          content: [
+            systemPrompt || DEFAULT_SYSTEM_PROMPT,
+            researchMode ? RESEARCH_PROMPT : null,
+            researchContext,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
         },
         ...sanitizeMessages(messages),
       ],
@@ -138,8 +225,14 @@ export async function POST(req) {
     const selectedModel = body.model || null;
     const systemPrompt = body.systemPrompt || DEFAULT_SYSTEM_PROMPT;
     const stream = Boolean(body.stream);
+    const researchMode = Boolean(body.researchMode);
 
-    const config = buildRequest(messages, selectedModel, systemPrompt);
+    const config = await buildRequest(
+      messages,
+      selectedModel,
+      systemPrompt,
+      researchMode
+    );
 
     if (stream) {
       const completion = await runCompletion({
@@ -177,6 +270,7 @@ export async function POST(req) {
 
     return NextResponse.json({
       reply: completion.choices[0].message.content,
+      researchSources: config.researchResults,
     });
   } catch (error) {
     return buildErrorResponse(error);
