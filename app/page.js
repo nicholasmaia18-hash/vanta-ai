@@ -1336,35 +1336,48 @@ function WorkspaceHeader({
 
       <div className="h-[500px] overflow-y-auto rounded-[1.45rem] border border-white/8 bg-[#07030d] p-4 sm:h-[580px] sm:p-5">
         <div className="space-y-4">
-          {messages.map((message, index) => (
-            <div
-              key={message.id || index}
-              className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
-                message.role === "user"
-                  ? "ml-auto bg-gradient-to-br from-violet-600 via-violet-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(168,85,247,0.22)]"
-                  : "border border-white/6 bg-white/[0.04] text-white"
-              }`}
-            >
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-                  {message.role === "user" ? "You" : "Vanta"}
-                </p>
-                {message.content?.trim() && (
-                  <button
-                    onClick={() => copyMessage(message.content, message.id || index)}
-                    className="text-xs text-white/40 transition hover:text-white/75"
-                  >
-                    Copy
-                  </button>
+          {messages.map((message, index) => {
+            const showStreamingDots =
+              loading && message.role === "assistant" && !message.content?.trim();
+
+            return (
+              <div
+                key={message.id || index}
+                className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
+                  message.role === "user"
+                    ? "ml-auto bg-gradient-to-br from-violet-600 via-violet-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(168,85,247,0.22)]"
+                    : "border border-white/6 bg-white/[0.04] text-white"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
+                    {message.role === "user" ? "You" : "Vanta"}
+                  </p>
+                  {message.content?.trim() && (
+                    <button
+                      onClick={() => copyMessage(message.content, message.id || index)}
+                      className="text-xs text-white/40 transition hover:text-white/75"
+                    >
+                      Copy
+                    </button>
+                  )}
+                </div>
+                {showStreamingDots ? (
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.3s]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.15s]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300" />
+                  </div>
+                ) : (
+                  <MessageBody
+                    content={message.content}
+                    user={message.role === "user"}
+                    attachments={message.attachments}
+                  />
                 )}
               </div>
-              <MessageBody
-                content={message.content}
-                user={message.role === "user"}
-                attachments={message.attachments}
-              />
-            </div>
-          ))}
+            );
+          })}
 
           {loading && !hasStreamingPlaceholder && (
             <div className="max-w-[85%] rounded-[1.2rem] border border-white/6 bg-white/[0.04] px-5 py-4 text-white">
