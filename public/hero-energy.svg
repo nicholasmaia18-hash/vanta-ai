@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="45%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#fb923c"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff2a3"/>
+      <stop offset="100%" stop-color="#facc15"/>
+    </linearGradient>
+    <linearGradient id="aura" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d8f7ff"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <linearGradient id="suit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffb347"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="720" rx="56" fill="url(#bg)"/>
+  <circle cx="545" cy="126" r="80" fill="#ffffff" fill-opacity=".12"/>
+  <circle cx="145" cy="540" r="120" fill="#ffffff" fill-opacity=".08"/>
+  <path d="M420 122l36 56 34-53 18 62 56-26-20 64 63 4-48 39 46 39-63 2 18 66-57-27-20 62-33-52-36 56-18-63-56 26 20-63-64-4 48-39-47-39 63-4-18-64 58 28z" fill="url(#aura)" fill-opacity=".6"/>
+  <path d="M344 148l48-72 22 78 48-82 10 78 50-67-8 84 56-47-21 82 73-25-41 63 80 2-63 34 63 30-82 8 50 54-78-8 22 74-66-44 0 84-50-64-24 79-30-74-34 67-14-79-50 45 4-74-67 23 34-62-72-7 56-32-58-31 74-10-42-50 72 3-18-70 58 41 0-79 46 61 30-77z" fill="url(#hair)" stroke="#172033" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M322 330c20-41 61-70 113-70 88 0 145 66 145 169 0 97-61 149-156 149-98 0-149-58-149-136 0-41 14-79 47-112z" fill="url(#suit)" stroke="#172033" stroke-width="12"/>
+  <path d="M338 342c22-20 41-28 72-28 23 0 43 8 58 22-12 10-31 16-56 16-36 0-54-4-74-10z" fill="#172033"/>
+  <path d="M396 360c10 26 9 57-4 85-16-23-31-47-43-74z" fill="#0f172a" fill-opacity=".24"/>
+  <path d="M286 566c20-65 79-109 146-109 81 0 139 55 159 121-55 33-109 49-167 49-49 0-93-9-138-61z" fill="#172033" fill-opacity=".16"/>
+  <circle cx="316" cy="441" r="22" fill="#dff6ff" stroke="#172033" stroke-width="10"/>
+  <circle cx="316" cy="441" r="42" fill="none" stroke="#dff6ff" stroke-opacity=".7" stroke-width="10"/>
+</svg>
