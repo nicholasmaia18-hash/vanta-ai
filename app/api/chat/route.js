@@ -33,12 +33,18 @@ export async function POST(req) {
       error?.headers?.["retry-after"] ||
       null;
     const retryAfter = retryAfterRaw ? Number(retryAfterRaw) : null;
+    const isRateLimited =
+      error?.status === 429 || error?.code === "rate_limit_exceeded";
+    const safeRetryAfter = isRateLimited
+      ? Math.max(retryAfter || 0, 60)
+      : retryAfter;
     const status = error?.status || (retryAfter ? 429 : 500);
 
     return NextResponse.json(
       {
         error: error.message || "Something went wrong",
-        retryAfter,
+        retryAfter: safeRetryAfter,
+        isRateLimited,
       },
       { status }
     );

@@ -59,10 +59,14 @@ export default function Home() {
       } else {
         let errorMessage = data.error || "Request failed.";
 
-        if (data.retryAfter) {
+        if (data.isRateLimited && data.retryAfter) {
           const seconds = Number(data.retryAfter) || 0;
           setCooldown(seconds);
-          errorMessage = `Rate limit reached. Retry in ${seconds} seconds.`;
+          errorMessage = `Rate limit reached on the free plan. Wait about ${seconds} seconds, then try one message again.`;
+        } else if (data.retryAfter) {
+          const seconds = Number(data.retryAfter) || 0;
+          setCooldown(seconds);
+          errorMessage = `Retry in ${seconds} seconds.`;
         }
 
         setMessages([
@@ -159,6 +163,9 @@ export default function Home() {
               </p>
               <p className="mt-3 text-sm leading-7 text-white/56">
                 The interface is intentionally narrow in scope: fewer visual decisions, stronger spacing, and a clear primary path through the product.
+              </p>
+              <p className="mt-3 text-sm leading-7 text-white/42">
+                On the free plan, treat the cooldown as roughly one minute after a rate-limit hit.
               </p>
             </div>
 
