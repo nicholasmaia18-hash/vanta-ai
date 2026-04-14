@@ -2,20 +2,64 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const DEFAULT_MESSAGES = [
+  {
+    role: "assistant",
+    content:
+      "Vanta is online. Ask a question to begin.\n\nI can also format:\n- short lists\n- inline `code`\n- fenced code blocks",
+  },
+];
+
 export default function Home() {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: "Vanta is online. Ask a question to begin.",
-    },
-  ]);
+  const [messages, setMessages] = useState(DEFAULT_MESSAGES);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [historyReady, setHistoryReady] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    if (cooldown <= 0) return;
+    try {
+      const storedMessages = window.localStorage.getItem("vanta_messages");
+      const storedCooldown = window.localStorage.getItem("vanta_cooldown_until");
+
+      if (storedMessages) {
+        const parsed = JSON.parse(storedMessages);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        }
+      }
+
+      if (storedCooldown) {
+        const remaining = Math.max(
+          0,
+          Math.ceil((Number(storedCooldown) - Date.now()) / 1000)
+        );
+        setCooldown(remaining);
+      }
+    } catch {
+      // Ignore localStorage issues and fall back to defaults.
+    } finally {
+      setHistoryReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!historyReady) return;
+
+    window.localStorage.setItem("vanta_messages", JSON.stringify(messages));
+  }, [messages, historyReady]);
+
+  useEffect(() => {
+    if (cooldown <= 0) {
+      window.localStorage.removeItem("vanta_cooldown_until");
+      return;
+    }
+
+    window.localStorage.setItem(
+      "vanta_cooldown_until",
+      String(Date.now() + cooldown * 1000)
+    );
 
     const timer = setInterval(() => {
       setCooldown((current) => (current <= 1 ? 0 : current - 1));
@@ -95,14 +139,11 @@ export default function Home() {
   }
 
   function resetConversation() {
-    setMessages([
-      {
-        role: "assistant",
-        content: "New conversation started.",
-      },
-    ]);
+    setMessages(DEFAULT_MESSAGES);
     setInput("");
     setCooldown(0);
+    window.localStorage.removeItem("vanta_messages");
+    window.localStorage.removeItem("vanta_cooldown_until");
   }
 
   const buttonLabel =
@@ -162,7 +203,7 @@ export default function Home() {
                 Notes
               </p>
               <p className="mt-3 text-sm leading-7 text-white/56">
-                The interface is intentionally narrow in scope: fewer visual decisions, stronger spacing, and a clear primary path through the product.
+                Chat history is stored in this browser so you can refresh and keep your conversation.
               </p>
               <p className="mt-3 text-sm leading-7 text-white/42">
                 On the free plan, treat the cooldown as roughly one minute after a rate-limit hit.
@@ -214,9 +255,7 @@ export default function Home() {
                     <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                       {message.role === "user" ? "You" : "Vanta"}
                     </p>
-                    <p className="whitespace-pre-wrap text-sm leading-7 text-white/88 sm:text-base">
-                      {message.content}
-                    </p>
+                    <MessageBody content={message.content} user={message.role === "user"} />
                   </div>
                 ))}
 
@@ -280,4 +319,78 @@ function SidebarCard({ label, value }) {
       <p className="mt-2 text-sm text-white/84">{value}</p>
     </div>
   );
+}
+
+function MessageBody({ content, user }) {
+  const blocks = content.split(/```/);
+
+  return (
+    <div className="space-y-3 text-sm leading-7 text-white/88 sm:text-base">
+      {blocks.map((block, index) => {
+        if (index % 2 === 1) {
+          const lines = block.split("\n");
+          const firstLine = lines[0]?.trim();
+          const language = firstLine && !firstLine.includes(" ") ? firstLine : "";
+          const code = language ? lines.slice(1).join("\n") : block;
+
+          return (
+            <div
+              key={`${index}-${language}`}
+              className={`overflow-hidden rounded-[1.1rem] border ${
+                user
+                  ? "border-white/20 bg-[#2a1348]/65"
+                  : "border-white/10 bg-[#12091d]"
+              }`}
+            >
+              <div className="border-b border-white/10 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
+                {language || "code"}
+              </div>
+              <pre className="overflow-x-auto px-4 py-3 text-sm leading-6 text-white/90">
+                <code>{code.trim()}</code>
+              </pre>
+            </div>
+          );
+        }
+
+        return block
+          .split("\n")
+          .filter((line) => line.trim())
+          .map((line, lineIndex) => {
+            if (line.trim().startsWith("- ")) {
+              return (
+                <div key={`${index}-${lineIndex}`} className="flex gap-2">
+                  <span className="mt-[10px] h-2 w-2 rounded-full bg-current opacity-70" />
+                  <p>{renderInline(line.trim().slice(2))}</p>
+                </div>
+              );
+            }
+
+            return (
+              <p key={`${index}-${lineIndex}`} className="whitespace-pre-wrap">
+                {renderInline(line)}
+              </p>
+            );
+          });
+      })}
+    </div>
+  );
+}
+
+function renderInline(text) {
+  const parts = text.split(/(`[^`]+`)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={`${part}-${index}`}
+          className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.94em] text-white"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
 }
