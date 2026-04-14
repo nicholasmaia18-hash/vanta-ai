@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadWorkspaceState, saveWorkspaceState } from "./lib/vanta-db";
+import { getSyncReadiness } from "./lib/sync-config";
 
 const STORAGE_KEYS = {
   cooldownUntil: "vanta_cooldown_until",
@@ -113,6 +114,7 @@ function parseSharedConversation() {
 }
 
 export default function Home() {
+  const syncReadiness = getSyncReadiness();
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [input, setInput] = useState("");
@@ -174,6 +176,12 @@ export default function Home() {
             tone: "info",
             message: "Shared conversation loaded into your workspace.",
           });
+        } else if (!syncReadiness.ready) {
+          setBanner({
+            tone: "info",
+            message:
+              "Local mode is active. Account sync is scaffolded for Clerk + Supabase and can be enabled during setup.",
+          });
         }
 
         if (storedCooldown) {
@@ -197,7 +205,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [syncReadiness.ready]);
 
   useEffect(() => {
     if (!historyReady) return;
@@ -539,6 +547,10 @@ export default function Home() {
     );
   }
 
+  const hasStreamingPlaceholder = messages.some(
+    (message) => message.role === "assistant" && !message.content?.trim()
+  );
+
   const buttonLabel =
     cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Send";
   const usageCount = usageTimestamps.filter((timestamp) => Date.now() - timestamp < 60000)
@@ -601,7 +613,10 @@ export default function Home() {
                 label="Cooldown"
                 value={cooldown > 0 ? `${cooldown}s` : "Ready"}
               />
-              <MetaCard label="Usage" value={`${usageCount}/2`} />
+              <MetaCard
+                label="Sync"
+                value={syncReadiness.ready ? "Account-ready" : "Local only"}
+              />
             </div>
           </div>
         </header>
@@ -690,6 +705,14 @@ export default function Home() {
                 <SidebarCard label="Rate limit" value="2 requests per minute" />
                 <SidebarCard label="Storage" value="Local browser database" />
                 <SidebarCard label="Sharing" value="Copyable private share links" />
+                <SidebarCard
+                  label="Account sync"
+                  value={
+                    syncReadiness.ready
+                      ? syncReadiness.provider
+                      : `${syncReadiness.provider} setup pending`
+                  }
+                />
               </div>
             </div>
           </aside>
@@ -781,6 +804,11 @@ export default function Home() {
               <span>{usageCount}/2 requests used in the last minute</span>
               <span>Shift+Enter for newline</span>
               <span>Streaming enabled</span>
+              <span>
+                {syncReadiness.ready
+                  ? "Cross-device sync ready to wire up"
+                  : "Cross-device sync setup still pending"}
+              </span>
             </div>
 
             {pendingAttachments.length > 0 && (
@@ -812,12 +840,14 @@ export default function Home() {
                       <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                         {message.role === "user" ? "You" : "Vanta"}
                       </p>
-                      <button
-                        onClick={() => copyMessage(message.content, message.id || index)}
-                        className="text-xs text-white/40 transition hover:text-white/75"
-                      >
-                        {copiedId === (message.id || index) ? "Copied" : "Copy"}
-                      </button>
+                      {message.content?.trim() && (
+                        <button
+                          onClick={() => copyMessage(message.content, message.id || index)}
+                          className="text-xs text-white/40 transition hover:text-white/75"
+                        >
+                          {copiedId === (message.id || index) ? "Copied" : "Copy"}
+                        </button>
+                      )}
                     </div>
                     <MessageBody
                       content={message.content}
@@ -827,7 +857,7 @@ export default function Home() {
                   </div>
                 ))}
 
-                {loading && (
+                {loading && !hasStreamingPlaceholder && (
                   <div className="max-w-[85%] rounded-[1.5rem] bg-white/[0.055] px-5 py-4 text-white">
                     <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                       Vanta
