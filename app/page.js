@@ -615,27 +615,26 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#05010b] text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <header className="mb-8 overflow-hidden rounded-[2.2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-8">
+      <div className="mx-auto max-w-[1380px] px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-6 overflow-hidden rounded-[1.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015))] p-6 shadow-[0_24px_90px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-violet-400/20 bg-violet-500/10 px-4 py-2">
+            <div className="max-w-2xl">
+              <div className="mb-5 inline-flex items-center gap-3 rounded-[0.95rem] border border-violet-400/15 bg-violet-500/8 px-4 py-2">
                 <span className="h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_16px_#8b5cf6]" />
                 <span className="text-[11px] font-medium uppercase tracking-[0.35em] text-violet-200">
                   Vanta
                 </span>
               </div>
-              <h1 className="max-w-4xl text-5xl font-semibold tracking-[-0.04em] text-white sm:text-6xl lg:text-7xl">
-                AI workspace
-                <span className="block text-white/55">without the clutter.</span>
+              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
+                Focused AI,
+                <span className="block text-white/50">without the interface noise.</span>
               </h1>
-              <p className="mt-5 max-w-2xl text-sm leading-7 text-white/58 sm:text-base">
-                A restrained interface for conversation, response review, and cooldown management.
-                Built to feel calm, fast, and intentional.
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/54 sm:text-[15px]">
+                Vanta keeps the workspace minimal, the responses readable, and the controls out of your way until you need them.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[440px]">
               <MetaCard
                 label="Model"
                 value={
@@ -658,7 +657,7 @@ export default function Home() {
 
         {banner && (
           <div
-            className={`mb-4 rounded-[1.4rem] border px-4 py-3 text-sm ${
+            className={`mb-4 rounded-[1rem] border px-4 py-3 text-sm ${
               banner.tone === "error"
                 ? "border-red-400/20 bg-red-500/10 text-red-200"
                 : banner.tone === "success"
@@ -670,9 +669,9 @@ export default function Home() {
           </div>
         )}
 
-        <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
-          <aside className="space-y-6">
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 backdrop-blur">
+        <section className="grid gap-5 lg:grid-cols-[300px_1fr]">
+          <aside className="space-y-5">
+            <div className="rounded-[1.6rem] border border-white/8 bg-[#090410]/88 p-5 shadow-[0_14px_48px_rgba(0,0,0,0.22)]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
                   Conversations
@@ -692,10 +691,10 @@ export default function Home() {
                   .map((conversation) => (
                     <div
                       key={conversation.id}
-                      className={`rounded-[1.25rem] border px-4 py-3 ${
+                      className={`rounded-[1rem] border px-4 py-3 transition ${
                         conversation.id === activeConversationId
-                          ? "border-violet-400/30 bg-violet-500/10"
-                          : "border-white/8 bg-[#090410]/70"
+                          ? "border-violet-400/25 bg-violet-500/8"
+                          : "border-white/6 bg-white/[0.02]"
                       }`}
                     >
                       <button
@@ -710,16 +709,16 @@ export default function Home() {
                             conversation.model}
                         </p>
                       </button>
-                      <div className="mt-3 flex gap-2 text-xs text-white/45">
-                        <button onClick={() => renameConversation(conversation.id)}>Rename</button>
-                        <button onClick={() => deleteConversation(conversation.id)}>Delete</button>
+                      <div className="mt-3 flex gap-3 text-xs text-white/40">
+                        <button className="transition hover:text-white/75" onClick={() => renameConversation(conversation.id)}>Rename</button>
+                        <button className="transition hover:text-red-200" onClick={() => deleteConversation(conversation.id)}>Delete</button>
                       </div>
                     </div>
                   ))}
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 backdrop-blur">
+            <div className="rounded-[1.6rem] border border-white/8 bg-[#090410]/88 p-5 shadow-[0_14px_48px_rgba(0,0,0,0.22)]">
               <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
                 Analytics
               </p>
@@ -731,7 +730,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 backdrop-blur">
+            <div className="rounded-[1.6rem] border border-white/8 bg-[#090410]/88 p-5 shadow-[0_14px_48px_rgba(0,0,0,0.22)]">
               <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
                 Workspace
               </p>
@@ -752,23 +751,23 @@ export default function Home() {
             </div>
           </aside>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-5 backdrop-blur sm:p-6">
-            <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-5">
+          <section className="rounded-[1.7rem] border border-white/8 bg-[#090410]/84 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur sm:p-6">
+            <div className="mb-5 flex flex-col gap-4 border-b border-white/8 pb-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
                     Conversation
                   </p>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-white">
+                  <h2 className="mt-2 text-[2rem] font-semibold tracking-[-0.035em] text-white">
                     {activeConversation?.title || "Chat"}
                   </h2>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <select
                     value={activeModel}
                     onChange={(event) => changeModel(event.target.value)}
-                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 outline-none"
+                    className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 outline-none"
                   >
                     {MODEL_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -778,50 +777,50 @@ export default function Home() {
                   </select>
                   <button
                     onClick={shareConversation}
-                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Share
                   </button>
                   <button
                     onClick={exportConversation}
-                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Export
                   </button>
                   <button
                     onClick={resetConversation}
-                    className="rounded-[1rem] border border-white/10 bg-[#090410] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+                    className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
                   >
                     Reset
                   </button>
                   {cooldown > 0 && (
-                    <div className="rounded-[1rem] border border-violet-400/20 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
+                    <div className="rounded-[0.95rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
                       Wait {cooldown}s
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+              <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
                 <div className="flex flex-wrap gap-2">
                   {PROMPT_PRESETS.map((preset) => (
                     <button
                       key={preset.label}
                       onClick={() => applyPreset(preset.value)}
-                      className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/65 transition hover:bg-white/[0.08]"
+                      className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
                     >
                       {preset.label}
                     </button>
                   ))}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/65 transition hover:bg-white/[0.08]"
+                    className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
                   >
                     Attach files
                   </button>
                 </div>
 
-                <div className="rounded-[1.25rem] border border-white/10 bg-[#090410] p-4">
+                <div className="rounded-[1.1rem] border border-white/8 bg-white/[0.025] p-4">
                   <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
                     Assistant settings
                   </p>
@@ -832,7 +831,7 @@ export default function Home() {
                   </p>
                   <button
                     onClick={() => setShowPromptEditor((current) => !current)}
-                    className="mt-4 w-full rounded-[1rem] border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.08]"
+                    className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.06]"
                   >
                     {showPromptEditor ? "Hide instructions" : "Edit instructions"}
                   </button>
@@ -840,7 +839,7 @@ export default function Home() {
               </div>
 
               {showPromptEditor && (
-                <div className="rounded-[1.25rem] border border-white/10 bg-[#090410] p-4">
+                <div className="rounded-[1.1rem] border border-white/8 bg-white/[0.025] p-4">
                   <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
                     Conversation instructions
                   </p>
@@ -854,10 +853,13 @@ export default function Home() {
               )}
             </div>
 
-            <div className="mb-4 flex flex-wrap gap-3 text-sm text-white/45">
-              <span>{usageCount}/2 requests used in the last minute</span>
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/42">
+              <span>{usageCount}/2 requests in the last minute</span>
+              <span className="text-white/18">|</span>
               <span>Shift+Enter for newline</span>
+              <span className="text-white/18">|</span>
               <span>Streaming enabled</span>
+              <span className="text-white/18">|</span>
               <span>
                 {syncReadiness.ready
                   ? "Cross-device sync ready to wire up"
@@ -870,7 +872,7 @@ export default function Home() {
                 {pendingAttachments.map((attachment) => (
                   <div
                     key={attachment.id}
-                    className="inline-flex items-center gap-2 rounded-[0.9rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-sm text-white/70"
+                    className="inline-flex items-center gap-2 rounded-[0.8rem] border border-white/8 bg-white/[0.035] px-3 py-2 text-sm text-white/68"
                   >
                     <span>{attachment.name}</span>
                     <button
@@ -884,17 +886,17 @@ export default function Home() {
               </div>
             )}
 
-            <div className="h-[500px] overflow-y-auto rounded-[1.8rem] border border-white/10 bg-[#090410] p-4 sm:h-[580px] sm:p-5">
+            <div className="h-[500px] overflow-y-auto rounded-[1.45rem] border border-white/8 bg-[#07030d] p-4 sm:h-[580px] sm:p-5">
               <div className="space-y-4">
                 {messages.map((message, index) => (
                   <div
                     key={message.id || index}
-                    className={`max-w-[85%] rounded-[1.5rem] px-4 py-3 sm:px-5 sm:py-4 ${
-                      message.role === "user"
-                        ? "ml-auto bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-[0_10px_30px_rgba(168,85,247,0.28)]"
-                        : "bg-white/[0.055] text-white"
-                    }`}
-                  >
+                      className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
+                        message.role === "user"
+                        ? "ml-auto bg-gradient-to-br from-violet-600 via-violet-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(168,85,247,0.22)]"
+                        : "border border-white/6 bg-white/[0.04] text-white"
+                      }`}
+                    >
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                         {message.role === "user" ? "You" : "Vanta"}
@@ -917,7 +919,7 @@ export default function Home() {
                 ))}
 
                 {loading && !hasStreamingPlaceholder && (
-                  <div className="max-w-[85%] rounded-[1.5rem] bg-white/[0.055] px-5 py-4 text-white">
+                  <div className="max-w-[85%] rounded-[1.2rem] border border-white/6 bg-white/[0.04] px-5 py-4 text-white">
                     <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                       Vanta
                     </p>
@@ -932,19 +934,19 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_170px]">
+            <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_168px]">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 rows={3}
                 placeholder="Type your message..."
-                className="min-h-[100px] resize-none rounded-[1.6rem] border border-white/10 bg-[#090410] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/30"
+                className="min-h-[100px] resize-none rounded-[1.25rem] border border-white/8 bg-[#07030d] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/30"
               />
               <button
                 onClick={sendMessage}
                 disabled={loading || cooldown > 0 || (!input.trim() && pendingAttachments.length === 0)}
-                className="rounded-[1.6rem] bg-gradient-to-br from-violet-500 to-fuchsia-600 px-6 py-4 text-base font-medium text-white shadow-[0_12px_36px_rgba(168,85,247,0.3)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none"
+                className="rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-600 px-6 py-4 text-base font-medium text-white shadow-[0_12px_30px_rgba(168,85,247,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none"
               >
                 {buttonLabel}
               </button>
@@ -963,7 +965,7 @@ export default function Home() {
       </div>
       {(pendingDeleteConversationId || pendingRenameConversationId) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[1.8rem] border border-white/10 bg-[#12091d] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+          <div className="w-full max-w-md rounded-[1.5rem] border border-white/8 bg-[#12091d] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
             <div className="mb-5">
               <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-violet-200/70">
                 Vanta
@@ -989,7 +991,7 @@ export default function Home() {
                   if (event.key === "Enter") saveRenameConversation();
                   if (event.key === "Escape") closeDialogs();
                 }}
-                className="w-full rounded-[1.1rem] border border-white/10 bg-[#090410] px-4 py-3 text-white outline-none placeholder:text-white/25"
+                className="w-full rounded-[0.95rem] border border-white/8 bg-[#090410] px-4 py-3 text-white outline-none placeholder:text-white/25"
                 placeholder="Conversation name"
               />
             )}
@@ -997,7 +999,7 @@ export default function Home() {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={closeDialogs}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:bg-white/[0.08]"
+                className="rounded-[0.95rem] border border-white/8 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:bg-white/[0.08]"
               >
                 Cancel
               </button>
@@ -1007,7 +1009,7 @@ export default function Home() {
                     ? saveRenameConversation
                     : confirmDeleteConversation
                 }
-                className={`rounded-full px-4 py-2 text-sm font-medium text-white transition ${
+                className={`rounded-[0.95rem] px-4 py-2 text-sm font-medium text-white transition ${
                   pendingRenameConversationId
                     ? "bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-[0_12px_32px_rgba(168,85,247,0.25)] hover:brightness-110"
                     : "bg-red-500/85 hover:bg-red-500"
@@ -1025,22 +1027,22 @@ export default function Home() {
 
 function MetaCard({ label, value }) {
   return (
-    <div className="rounded-[1.3rem] border border-white/10 bg-[#090410]/80 px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-white/30">
+    <div className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
         {label}
       </p>
-      <p className="mt-2 text-sm font-medium text-white">{value}</p>
+      <p className="mt-2 text-sm font-medium text-white/92">{value}</p>
     </div>
   );
 }
 
 function SidebarCard({ label, value }) {
   return (
-    <div className="rounded-[1.3rem] border border-white/10 bg-[#090410]/80 px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-white/30">
+    <div className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
         {label}
       </p>
-      <p className="mt-2 text-sm text-white/84">{value}</p>
+      <p className="mt-2 text-sm text-white/80">{value}</p>
     </div>
   );
 }
@@ -1055,7 +1057,7 @@ function MessageBody({ content, user, attachments = [] }) {
           {attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/70"
+              className="rounded-[0.8rem] border border-white/12 bg-white/8 px-3 py-1.5 text-xs text-white/70"
             >
               {attachment.name}
             </div>
@@ -1075,8 +1077,8 @@ function MessageBody({ content, user, attachments = [] }) {
               key={`${index}-${language}`}
               className={`overflow-hidden rounded-[1.1rem] border ${
                 user
-                  ? "border-white/20 bg-[#2a1348]/65"
-                  : "border-white/10 bg-[#12091d]"
+                  ? "border-white/14 bg-[#2a1348]/55"
+                  : "border-white/8 bg-[#12091d]"
               }`}
             >
               <div className="border-b border-white/10 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-white/40">
@@ -1131,4 +1133,5 @@ function renderInline(text) {
     return <span key={`${part}-${index}`}>{part}</span>;
   });
 }
+
 
