@@ -1,5 +1,10 @@
 import OpenAI from "openai";
-import { jsonNoStore, validateChatPayload, validateRequestOrigin } from "@/app/lib/security";
+import {
+  enforceApiRateLimit,
+  jsonNoStore,
+  validateChatPayload,
+  validateRequestOrigin,
+} from "@/app/lib/security";
 
 const client = new OpenAI({
   apiKey: process.env.SHUTTLEAI_API_KEY,
@@ -222,6 +227,9 @@ export async function POST(req) {
   try {
     const originError = validateRequestOrigin(req);
     if (originError) return originError;
+
+    const rateLimitError = enforceApiRateLimit(req, "chat-write");
+    if (rateLimitError) return rateLimitError;
 
     const contentType = req.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {

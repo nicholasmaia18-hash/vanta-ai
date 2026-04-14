@@ -25,6 +25,7 @@ const DEFAULT_ASSISTANT_MESSAGE = {
   content:
     "Vanta is online. Ask a question to begin.\n\nI can also help with:\n- research mode with web context\n- pasted screenshots and images\n- files, code, and quick exports",
 };
+const MAX_REQUEST_HISTORY = 120;
 
 function createConversation(model = MODEL_OPTIONS[0].value) {
   return {
@@ -36,6 +37,30 @@ function createConversation(model = MODEL_OPTIONS[0].value) {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: [DEFAULT_ASSISTANT_MESSAGE],
+  };
+}
+
+function getStartOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today.getTime();
+}
+
+function getLatestRetryContext(messages = []) {
+  const lastUserIndex = [...messages]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(({ message }) => message.role === "user")?.index;
+
+  if (typeof lastUserIndex !== "number") return null;
+
+  const requestMessages = messages
+    .slice(0, lastUserIndex + 1)
+    .filter((message) => !(message.role === "assistant" && !message.content?.trim()));
+
+  return {
+    lastUserIndex,
+    requestMessages,
   };
 }
 
@@ -152,6 +177,7 @@ export default function Home() {
   const [copiedId, setCopiedId] = useState(null);
   const [banner, setBanner] = useState(null);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [requestHistory, setRequestHistory] = useState([]);
   const [historyReady, setHistoryReady] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(
@@ -164,6 +190,8 @@ export default function Home() {
   const [renameDraft, setRenameDraft] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
   const [conversationSearch, setConversationSearch] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editDraft, setEditDraft] = useState("");
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -226,6 +254,69 @@ export default function Home() {
     };
   }, [conversations]);
 
+  const usageDashboard = useMemo(() => {
+    const todayStart = getStartOfToday();
+    const todaysRequests = requestHistory.filter((entry) => entry.at >= todayStart);
+    const successfulRequests = todaysRequests.filter((entry) => entry.status === "success");
+    const averageLatency =
+      successfulRequests.length > 0
+        ? Math.round(
+            successfulRequests.reduce((sum, entry) => sum + (entry.latencyMs || 0), 0) /
+              successfulRequests.length
+          )
+        : 0;
+    const favoriteCount = conversations.reduce(
+      (sum, conversation) =>
+        sum + conversation.messages.filter((message) => message.favorite).length,
+      0
+    );
+    const pinnedCount = conversations.reduce(
+      (sum, conversation) =>
+        sum + conversation.messages.filter((message) => message.pinned).length,
+      0
+    );
+    const likes = conversations.reduce(
+      (sum, conversation) =>
+        sum + conversation.messages.filter((message) => message.feedback === "up").length,
+      0
+    );
+    const dislikes = conversations.reduce(
+      (sum, conversation) =>
+        sum + conversation.messages.filter((message) => message.feedback === "down").length,
+      0
+    );
+
+    return {
+      requestsToday: todaysRequests.length,
+      successRate:
+        todaysRequests.length > 0
+          ? Math.round((successfulRequests.length / todaysRequests.length) * 100)
+          : 100,
+      averageLatency,
+      rateLimited: todaysRequests.filter((entry) => entry.status === "rate_limited").length,
+      favorites: favoriteCount,
+      pinned: pinnedCount,
+      likes,
+      dislikes,
+    };
+  }, [conversations, requestHistory]);
+
+  const latestRetryableAssistantId = useMemo(() => {
+    const context = getLatestRetryContext(messages);
+    if (!context) return null;
+
+    const latestAssistant = [...messages]
+      .reverse()
+      .find(
+        (message) =>
+          message.role === "assistant" &&
+          message.id !== DEFAULT_ASSISTANT_MESSAGE.id &&
+          message.content?.trim()
+      );
+
+    return latestAssistant?.id || null;
+  }, [messages]);
+
   function updateConversation(conversationId, updater) {
     setConversations((current) =>
       current.map((conversation) =>
@@ -238,6 +329,22 @@ export default function Home() {
           : conversation
       )
     );
+  }
+
+  function recordRequest(entry) {
+    setRequestHistory((current) =>
+      [...current, { id: crypto.randomUUID(), ...entry }].slice(-MAX_REQUEST_HISTORY)
+    );
+  }
+
+  function updateMessage(messageId, updater) {
+    if (!activeConversation) return;
+
+    updateConversation(activeConversation.id, (conversation) => ({
+      messages: conversation.messages.map((message) =>
+        message.id === messageId ? { ...message, ...updater(message) } : message
+      ),
+    }));
   }
 
   async function queueAttachments(files) {
@@ -290,6 +397,7 @@ export default function Home() {
             null
         );
         setUsageTimestamps(storedState?.usageTimestamps || []);
+        setRequestHistory(storedState?.requestHistory || []);
 
         if (storedCooldown) {
           const remaining = Math.max(
@@ -377,13 +485,14 @@ export default function Home() {
       conversations,
       activeConversationId,
       usageTimestamps,
+      requestHistory,
     }).catch(() => {
       setBanner({
         tone: "error",
         message: "Unable to save workspace state in this browser.",
       });
     });
-  }, [conversations, activeConversationId, usageTimestamps, historyReady]);
+  }, [conversations, activeConversationId, usageTimestamps, requestHistory, historyReady]);
 
   useEffect(() => {
     if (!historyReady || !remoteReady || !syncReadiness.ready || loading) return;
@@ -524,40 +633,25 @@ export default function Home() {
     setDragActive(false);
   }
 
-  async function sendMessage() {
-    if (
-      (!input.trim() && pendingAttachments.length === 0) ||
-      loading ||
-      cooldown > 0 ||
-      !activeConversation
-    ) {
-      return;
-    }
-
-    const userMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: input.trim() || "Uploaded files",
-      attachments: pendingAttachments,
-    };
+  async function requestAssistantReply({
+    conversationSnapshot,
+    requestMessages,
+    visibleMessages,
+    nextTitle,
+  }) {
     const streamingMessageId = crypto.randomUUID();
     const assistantPlaceholder = {
       id: streamingMessageId,
       role: "assistant",
       content: "",
     };
-    const hasMeaningfulTitle =
-      activeConversation.title && activeConversation.title !== "New conversation";
+    const startedAt = Date.now();
 
-    updateConversation(activeConversation.id, (conversation) => ({
-      messages: [...conversation.messages, userMessage, assistantPlaceholder],
-      title: hasMeaningfulTitle
-        ? conversation.title
-        : createTitleFromMessage(userMessage.content),
+    updateConversation(conversationSnapshot.id, () => ({
+      messages: [...visibleMessages, assistantPlaceholder],
+      title: nextTitle,
     }));
 
-    setInput("");
-    setPendingAttachments([]);
     setLoading(true);
     setBanner(null);
 
@@ -566,10 +660,10 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...activeConversation.messages, userMessage],
-          model: activeConversation.model,
-          systemPrompt: activeConversation.systemPrompt,
-          researchMode: activeConversation.researchMode,
+          messages: requestMessages,
+          model: conversationSnapshot.model,
+          systemPrompt: conversationSnapshot.systemPrompt,
+          researchMode: conversationSnapshot.researchMode,
           stream: true,
         }),
       });
@@ -588,11 +682,17 @@ export default function Home() {
           errorMessage = `Retry in ${seconds} seconds.`;
         }
 
-        updateConversation(activeConversation.id, (conversation) => ({
+        recordRequest({
+          at: Date.now(),
+          latencyMs: Date.now() - startedAt,
+          status: data.isRateLimited ? "rate_limited" : "error",
+          model: conversationSnapshot.model,
+        });
+
+        updateConversation(conversationSnapshot.id, () => ({
+          title: nextTitle,
           messages: [
-            ...conversation.messages.filter(
-              (message) => message.id !== streamingMessageId
-            ),
+            ...visibleMessages,
             {
               id: crypto.randomUUID(),
               role: "assistant",
@@ -601,7 +701,6 @@ export default function Home() {
           ],
         }));
         setBanner({ tone: "error", message: errorMessage });
-        setLoading(false);
         return;
       }
 
@@ -617,7 +716,7 @@ export default function Home() {
         const { value, done } = await reader.read();
         if (done) break;
         streamedText += decoder.decode(value, { stream: true });
-        updateConversation(activeConversation.id, (conversation) => ({
+        updateConversation(conversationSnapshot.id, (conversation) => ({
           messages: conversation.messages.map((message) =>
             message.id === streamingMessageId
               ? { ...message, content: streamedText }
@@ -626,7 +725,7 @@ export default function Home() {
         }));
       }
 
-      updateConversation(activeConversation.id, (conversation) => ({
+      updateConversation(conversationSnapshot.id, (conversation) => ({
         messages: conversation.messages.map((message) =>
           message.id === streamingMessageId
             ? {
@@ -637,18 +736,87 @@ export default function Home() {
             : message
         ),
       }));
+
+      recordRequest({
+        at: Date.now(),
+        latencyMs: Date.now() - startedAt,
+        status: "success",
+        model: conversationSnapshot.model,
+      });
     } catch {
       const errorMessage = "Connection error. Please try again.";
-      updateConversation(activeConversation.id, (conversation) => ({
+      updateConversation(conversationSnapshot.id, () => ({
+        title: nextTitle,
         messages: [
-          ...conversation.messages.filter((message) => message.id !== streamingMessageId),
+          ...visibleMessages,
           { id: crypto.randomUUID(), role: "assistant", content: errorMessage },
         ],
       }));
+      recordRequest({
+        at: Date.now(),
+        latencyMs: Date.now() - startedAt,
+        status: "error",
+        model: conversationSnapshot.model,
+      });
       setBanner({ tone: "error", message: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendMessage() {
+    if (
+      (!input.trim() && pendingAttachments.length === 0) ||
+      loading ||
+      cooldown > 0 ||
+      !activeConversation
+    ) {
+      return;
     }
 
-    setLoading(false);
+    const conversationSnapshot = activeConversation;
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: input.trim() || "Uploaded files",
+      attachments: pendingAttachments,
+    };
+    const hasMeaningfulTitle =
+      conversationSnapshot.title && conversationSnapshot.title !== "New conversation";
+    const nextTitle = hasMeaningfulTitle
+      ? conversationSnapshot.title
+      : createTitleFromMessage(userMessage.content);
+    const nextMessages = [...conversationSnapshot.messages, userMessage];
+
+    setInput("");
+    setPendingAttachments([]);
+
+    await requestAssistantReply({
+      conversationSnapshot,
+      requestMessages: nextMessages,
+      visibleMessages: nextMessages,
+      nextTitle,
+    });
+  }
+
+  async function regenerateLatestResponse() {
+    if (loading || cooldown > 0 || !activeConversation) return;
+
+    const context = getLatestRetryContext(activeConversation.messages);
+    if (!context) {
+      setBanner({
+        tone: "error",
+        message: "There isn't a user prompt to regenerate yet.",
+      });
+      return;
+    }
+
+    await requestAssistantReply({
+      conversationSnapshot: activeConversation,
+      requestMessages: context.requestMessages,
+      visibleMessages: context.requestMessages,
+      nextTitle: activeConversation.title,
+    });
   }
 
   function handleKeyDown(event) {
@@ -656,6 +824,42 @@ export default function Home() {
       event.preventDefault();
       sendMessage();
     }
+  }
+
+  function startEditingMessage(message) {
+    setEditingMessageId(message.id);
+    setEditDraft(message.content);
+  }
+
+  function cancelEditingMessage() {
+    setEditingMessageId(null);
+    setEditDraft("");
+  }
+
+  function saveEditedMessage(messageId) {
+    const nextValue = editDraft.trim();
+    if (!nextValue) return;
+
+    updateMessage(messageId, () => ({ content: nextValue }));
+    setBanner({
+      tone: "info",
+      message: "Message updated. Use regenerate when you want a fresh answer.",
+    });
+    cancelEditingMessage();
+  }
+
+  function toggleMessagePin(messageId) {
+    updateMessage(messageId, (message) => ({ pinned: !message.pinned }));
+  }
+
+  function toggleMessageFavorite(messageId) {
+    updateMessage(messageId, (message) => ({ favorite: !message.favorite }));
+  }
+
+  function setMessageFeedback(messageId, feedback) {
+    updateMessage(messageId, (message) => ({
+      feedback: message.feedback === feedback ? null : feedback,
+    }));
   }
 
   function createNewConversation() {
@@ -1008,9 +1212,9 @@ export default function Home() {
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <SidebarCard label="Conversations" value={String(analytics.conversationCount)} />
-                <SidebarCard label="Messages" value={String(analytics.totalMessages)} />
-                <SidebarCard label="Voice" value={voiceSupported ? "Ready" : "Off"} />
-                <SidebarCard label="Sync" value={formatSyncStatus(syncStatus)} />
+                <SidebarCard label="Requests today" value={String(usageDashboard.requestsToday)} />
+                <SidebarCard label="Avg latency" value={usageDashboard.averageLatency ? `${usageDashboard.averageLatency}ms` : "n/a"} />
+                <SidebarCard label="Success" value={`${usageDashboard.successRate}%`} />
               </div>
             </Panel>
 
@@ -1022,6 +1226,8 @@ export default function Home() {
                 <SidebarCard label="Storage" value="Saved on this browser" />
                 <SidebarCard label="Sharing" value="Local share links" />
                 <SidebarCard label="Rate limit" value="2 requests per minute" />
+                <SidebarCard label="Favorites" value={String(usageDashboard.favorites)} />
+                <SidebarCard label="Protection" value="Burst + share guards" />
               </div>
             </Panel>
           </div>
@@ -1094,8 +1300,10 @@ export default function Home() {
               <div className="mt-4 space-y-3">
                 <SidebarCard label="Conversations" value={String(analytics.conversationCount)} />
                 <SidebarCard label="Total messages" value={String(analytics.totalMessages)} />
-                <SidebarCard label="Your messages" value={String(analytics.userMessages)} />
-                <SidebarCard label="Avg / chat" value={String(analytics.averageMessages)} />
+                <SidebarCard label="Requests today" value={String(usageDashboard.requestsToday)} />
+                <SidebarCard label="Avg latency" value={usageDashboard.averageLatency ? `${usageDashboard.averageLatency}ms` : "n/a"} />
+                <SidebarCard label="Success rate" value={`${usageDashboard.successRate}%`} />
+                <SidebarCard label="Rate limited" value={String(usageDashboard.rateLimited)} />
               </div>
             </Panel>
 
@@ -1109,6 +1317,10 @@ export default function Home() {
                 <SidebarCard label="Rate limit" value="2 requests per minute" />
                 <SidebarCard label="Storage" value="Saved on this browser" />
                 <SidebarCard label="Sharing" value="Local share links" />
+                <SidebarCard label="Protection" value="Burst + share guards" />
+                <SidebarCard label="Pinned" value={String(usageDashboard.pinned)} />
+                <SidebarCard label="Favorites" value={String(usageDashboard.favorites)} />
+                <SidebarCard label="Feedback" value={`${usageDashboard.likes}/${usageDashboard.dislikes}`} />
                 <SidebarCard label="Sync state" value={formatSyncStatus(syncStatus)} />
               </div>
             </Panel>
@@ -1131,10 +1343,13 @@ export default function Home() {
             <WorkspaceHeader
               activeConversation={activeConversation}
               activeModel={activeModel}
+              cancelEditingMessage={cancelEditingMessage}
               buttonLabel={buttonLabel}
               changeModel={changeModel}
               cooldown={cooldown}
               copyMessage={copyMessage}
+              editDraft={editDraft}
+              editingMessageId={editingMessageId}
               exportConversation={exportConversation}
               fileInputRef={fileInputRef}
               hasCustomPrompt={hasCustomPrompt}
@@ -1145,14 +1360,22 @@ export default function Home() {
               messages={messages}
               messagesEndRef={messagesEndRef}
               pendingAttachments={pendingAttachments}
+              latestRetryableAssistantId={latestRetryableAssistantId}
               removeAttachment={removeAttachment}
               researchMode={researchMode}
+              regenerateLatestResponse={regenerateLatestResponse}
+              saveEditedMessage={saveEditedMessage}
               setInput={setInput}
+              setEditDraft={setEditDraft}
+              setMessageFeedback={setMessageFeedback}
               setShowPromptEditor={setShowPromptEditor}
               shareConversation={shareConversation}
               showPromptEditor={showPromptEditor}
+              startEditingMessage={startEditingMessage}
               syncStatus={syncStatus}
               toggleResearchMode={toggleResearchMode}
+              toggleMessageFavorite={toggleMessageFavorite}
+              toggleMessagePin={toggleMessagePin}
               toggleVoiceInput={toggleVoiceInput}
               updateSystemPrompt={updateSystemPrompt}
               activeSystemPrompt={activeSystemPrompt}
@@ -1219,28 +1442,39 @@ export default function Home() {
 function WorkspaceHeader({
   activeConversation,
   activeModel,
+  cancelEditingMessage,
   buttonLabel,
   changeModel,
   cooldown,
   copyMessage,
+  editDraft,
+  editingMessageId,
   exportConversation,
   fileInputRef,
   hasCustomPrompt,
   hasStreamingPlaceholder,
   input,
   isListening,
+  latestRetryableAssistantId,
   loading,
   messages,
   messagesEndRef,
   pendingAttachments,
   removeAttachment,
   researchMode,
+  regenerateLatestResponse,
+  saveEditedMessage,
   setInput,
+  setEditDraft,
+  setMessageFeedback,
   setShowPromptEditor,
   shareConversation,
   showPromptEditor,
+  startEditingMessage,
   syncStatus,
   toggleResearchMode,
+  toggleMessageFavorite,
+  toggleMessagePin,
   toggleVoiceInput,
   updateSystemPrompt,
   activeSystemPrompt,
@@ -1266,11 +1500,11 @@ function WorkspaceHeader({
             </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 pr-1 sm:flex-wrap sm:overflow-visible">
             <select
               value={activeModel}
               onChange={(event) => changeModel(event.target.value)}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 outline-none"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 outline-none"
             >
               {MODEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1280,7 +1514,7 @@ function WorkspaceHeader({
             </select>
             <button
               onClick={toggleResearchMode}
-              className={`rounded-[0.95rem] border px-3 py-2.5 text-sm transition ${
+              className={`shrink-0 rounded-[0.95rem] border px-3 py-2.5 text-sm transition ${
                 researchMode
                   ? "border-violet-400/25 bg-violet-500/12 text-violet-100"
                   : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
@@ -1290,24 +1524,31 @@ function WorkspaceHeader({
             </button>
             <button
               onClick={shareConversation}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
             >
               Share
             </button>
             <button
               onClick={exportConversation}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
             >
               Export
             </button>
             <button
               onClick={resetConversation}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
             >
               Reset
             </button>
+            <button
+              onClick={regenerateLatestResponse}
+              disabled={!latestRetryableAssistantId || loading || cooldown > 0}
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:text-white/28"
+            >
+              Regenerate
+            </button>
             {cooldown > 0 && (
-              <div className="rounded-[0.95rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
+              <div className="shrink-0 rounded-[0.95rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
                 Wait {cooldown}s
               </div>
             )}
@@ -1315,26 +1556,26 @@ function WorkspaceHeader({
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 pr-1 sm:flex-wrap sm:overflow-visible">
             {PROMPT_PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 onClick={() => applyPreset(preset.value)}
-                className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
+                className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
               >
                 {preset.label}
               </button>
             ))}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
             >
               Attach files
             </button>
             <button
               onClick={toggleVoiceInput}
               disabled={!voiceSupported}
-              className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:text-white/28"
+              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:text-white/28"
             >
               {isListening ? "Stop mic" : "Voice input"}
             </button>
@@ -1387,6 +1628,8 @@ function WorkspaceHeader({
         <span className="text-white/18">|</span>
         <span>{voiceSupported ? "Voice input ready" : "Voice input unsupported"}</span>
         <span className="text-white/18">|</span>
+        <span>Admin protections active</span>
+        <span className="text-white/18">|</span>
         <span>{formatSyncStatus(syncStatus)}</span>
       </div>
 
@@ -1426,6 +1669,11 @@ function WorkspaceHeader({
           {messages.map((message, index) => {
             const showStreamingDots =
               loading && message.role === "assistant" && !message.content?.trim();
+            const isEditing = editingMessageId === message.id;
+            const isRetryableAssistant =
+              message.role === "assistant" &&
+              message.id === latestRetryableAssistantId &&
+              !showStreamingDots;
 
             return (
               <div
@@ -1434,12 +1682,36 @@ function WorkspaceHeader({
                   message.role === "user"
                     ? "ml-auto bg-gradient-to-br from-violet-600 via-violet-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(168,85,247,0.22)]"
                     : "border border-white/6 bg-white/[0.04] text-white"
+                } ${message.pinned ? "ring-1 ring-violet-300/30" : ""} ${
+                  message.favorite ? "shadow-[0_12px_32px_rgba(168,85,247,0.14)]" : ""
                 }`}
               >
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-                    {message.role === "user" ? "You" : "Vanta"}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
+                      {message.role === "user" ? "You" : "Vanta"}
+                    </p>
+                    {message.pinned && (
+                      <span className="rounded-full border border-violet-300/20 bg-violet-500/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-violet-100/90">
+                        Pinned
+                      </span>
+                    )}
+                    {message.favorite && (
+                      <span className="rounded-full border border-fuchsia-300/20 bg-fuchsia-500/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-fuchsia-100/90">
+                        Saved
+                      </span>
+                    )}
+                    {message.feedback === "up" && (
+                      <span className="rounded-full border border-emerald-300/20 bg-emerald-500/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-emerald-100/90">
+                        Helpful
+                      </span>
+                    )}
+                    {message.feedback === "down" && (
+                      <span className="rounded-full border border-amber-300/20 bg-amber-500/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-amber-100/90">
+                        Needs work
+                      </span>
+                    )}
+                  </div>
                   {message.content?.trim() && (
                     <button
                       onClick={() => copyMessage(message.content, message.id || index)}
@@ -1460,12 +1732,106 @@ function WorkspaceHeader({
                       Generating response...
                     </span>
                   </div>
+                ) : isEditing ? (
+                  <div className="space-y-3">
+                    <textarea
+                      value={editDraft}
+                      onChange={(event) => setEditDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") cancelEditingMessage();
+                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                          event.preventDefault();
+                          saveEditedMessage(message.id);
+                        }
+                      }}
+                      rows={4}
+                      className="w-full resize-none rounded-[1rem] border border-white/10 bg-black/15 px-3 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/25"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => saveEditedMessage(message.id)}
+                        className="rounded-[0.85rem] border border-white/8 bg-white/[0.06] px-3 py-2 text-xs text-white/80 transition hover:bg-white/[0.1]"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={cancelEditingMessage}
+                        className="rounded-[0.85rem] border border-white/8 bg-transparent px-3 py-2 text-xs text-white/55 transition hover:bg-white/[0.06]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <MessageBody
                     content={message.content}
                     user={message.role === "user"}
                     attachments={message.attachments}
                   />
+                )}
+                {!showStreamingDots && (
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    {message.role === "user" && !isEditing && (
+                      <button
+                        onClick={() => startEditingMessage(message)}
+                        className="rounded-[0.75rem] border border-white/8 px-2.5 py-1.5 text-white/58 transition hover:bg-white/[0.06] hover:text-white/78"
+                      >
+                        Edit
+                      </button>
+                    )}
+                    {isRetryableAssistant && (
+                      <button
+                        onClick={regenerateLatestResponse}
+                        className="rounded-[0.75rem] border border-white/8 px-2.5 py-1.5 text-white/58 transition hover:bg-white/[0.06] hover:text-white/78"
+                      >
+                        Retry
+                      </button>
+                    )}
+                    <button
+                      onClick={() => toggleMessagePin(message.id)}
+                      className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                        message.pinned
+                          ? "border-violet-300/20 bg-violet-500/12 text-violet-100"
+                          : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
+                      }`}
+                    >
+                      {message.pinned ? "Pinned" : "Pin"}
+                    </button>
+                    <button
+                      onClick={() => toggleMessageFavorite(message.id)}
+                      className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                        message.favorite
+                          ? "border-violet-300/20 bg-violet-500/12 text-violet-100"
+                          : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
+                      }`}
+                    >
+                      {message.favorite ? "Saved" : "Favorite"}
+                    </button>
+                    {message.role === "assistant" && (
+                      <>
+                        <button
+                          onClick={() => setMessageFeedback(message.id, "up")}
+                          className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                            message.feedback === "up"
+                              ? "border-emerald-300/20 bg-emerald-500/12 text-emerald-100"
+                              : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
+                          }`}
+                        >
+                          Helpful
+                        </button>
+                        <button
+                          onClick={() => setMessageFeedback(message.id, "down")}
+                          className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                            message.feedback === "down"
+                              ? "border-amber-300/20 bg-amber-500/12 text-amber-100"
+                              : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
+                          }`}
+                        >
+                          Needs work
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -1476,10 +1842,15 @@ function WorkspaceHeader({
               <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                 Vanta
               </p>
-              <div className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.3s]" />
-                <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.15s]" />
-                <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300" />
+              <div className="flex items-center gap-3 text-white/72">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.3s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.15s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300" />
+                </div>
+                <span className="text-sm text-white/58 sm:text-[15px]">
+                  Generating response...
+                </span>
               </div>
             </div>
           )}

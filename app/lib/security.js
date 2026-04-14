@@ -4,8 +4,12 @@ const DEFAULT_APP_URL = "https://vanta-ai-chat.vercel.app";
 
 export const LIMITS = {
   attachmentCount: 4,
+  burstWindowMs: 15_000,
+  burstWindowRequests: 3,
   conversationCount: 50,
   conversationTitleChars: 120,
+  longWindowMs: 10 * 60_000,
+  longWindowRequests: 18,
   imageAttachmentChars: 7_000_000,
   messageChars: 8_000,
   messageCount: 40,
@@ -50,6 +54,93 @@ function getAllowedOrigins(req) {
   }
 
   return origins;
+}
+
+function getRequestStore() {
+  if (!globalThis.__vantaRequestStore) {
+    globalThis.__vantaRequestStore = new Map();
+  }
+
+  return globalThis.__vantaRequestStore;
+}
+
+function cleanupRequestStore(store, now) {
+  for (const [key, value] of store.entries()) {
+    const recentBurst = value.burst.filter((timestamp) => now - timestamp < LIMITS.burstWindowMs);
+    const recentLong = value.long.filter((timestamp) => now - timestamp < LIMITS.longWindowMs);
+
+    if (recentBurst.length === 0 && recentLong.length === 0) {
+      store.delete(key);
+      continue;
+    }
+
+    store.set(key, {
+      ...value,
+      burst: recentBurst,
+      long: recentLong,
+    });
+  }
+}
+
+export function getClientFingerprint(req) {
+  const forwardedFor = req.headers.get("x-forwarded-for") || "";
+  const realIp = req.headers.get("x-real-ip") || "";
+  const clientIp =
+    forwardedFor.split(",")[0]?.trim() ||
+    realIp.trim() ||
+    "unknown-ip";
+  const userAgent = (req.headers.get("user-agent") || "unknown-agent").slice(0, 180);
+  const acceptLanguage = (req.headers.get("accept-language") || "").slice(0, 120);
+
+  return `${clientIp}|${userAgent}|${acceptLanguage}`;
+}
+
+export function enforceApiRateLimit(req, scope = "chat") {
+  const now = Date.now();
+  const store = getRequestStore();
+  cleanupRequestStore(store, now);
+
+  const key = `${scope}:${getClientFingerprint(req)}`;
+  const record = store.get(key) || { burst: [], long: [] };
+  const burst = record.burst.filter((timestamp) => now - timestamp < LIMITS.burstWindowMs);
+  const long = record.long.filter((timestamp) => now - timestamp < LIMITS.longWindowMs);
+
+  if (burst.length >= LIMITS.burstWindowRequests) {
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((LIMITS.burstWindowMs - (now - burst[0])) / 1000)
+    );
+
+    return jsonNoStore(
+      {
+        error: "Too many requests in a short burst. Slow down and try again.",
+        retryAfter,
+        isRateLimited: true,
+      },
+      { status: 429 }
+    );
+  }
+
+  if (long.length >= LIMITS.longWindowRequests) {
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((LIMITS.longWindowMs - (now - long[0])) / 1000)
+    );
+
+    return jsonNoStore(
+      {
+        error: "Too many requests from this device recently. Try again a bit later.",
+        retryAfter,
+        isRateLimited: true,
+      },
+      { status: 429 }
+    );
+  }
+
+  burst.push(now);
+  long.push(now);
+  store.set(key, { burst, long });
+  return null;
 }
 
 export function validateRequestOrigin(req) {

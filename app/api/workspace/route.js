@@ -6,6 +6,7 @@ import {
   sortConversations,
 } from "@/app/lib/supabase";
 import {
+  enforceApiRateLimit,
   jsonNoStore,
   validateRequestOrigin,
   validateWorkspacePayload,
@@ -68,7 +69,13 @@ async function requireUser() {
   return { userId };
 }
 
-export async function GET() {
+export async function GET(req) {
+  const originError = validateRequestOrigin(req);
+  if (originError) return originError;
+
+  const rateLimitError = enforceApiRateLimit(req, "workspace-read");
+  if (rateLimitError) return rateLimitError;
+
   const gate = await requireUser();
   if (gate.error) return gate.error;
 
@@ -124,6 +131,9 @@ export async function GET() {
 export async function POST(req) {
   const originError = validateRequestOrigin(req);
   if (originError) return originError;
+
+  const rateLimitError = enforceApiRateLimit(req, "workspace-write");
+  if (rateLimitError) return rateLimitError;
 
   const gate = await requireUser();
   if (gate.error) return gate.error;

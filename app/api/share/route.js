@@ -5,6 +5,7 @@ import {
   mapConversationToRecord,
 } from "@/app/lib/supabase";
 import {
+  enforceApiRateLimit,
   jsonNoStore,
   validateConversation,
   validateRequestOrigin,
@@ -22,6 +23,9 @@ function isShareConfigured() {
 export async function POST(req) {
   const originError = validateRequestOrigin(req);
   if (originError) return originError;
+
+  const rateLimitError = enforceApiRateLimit(req, "share-write");
+  if (rateLimitError) return rateLimitError;
 
   if (!isShareConfigured()) {
     return jsonNoStore(

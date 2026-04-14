@@ -1,15 +1,18 @@
-import { NextResponse } from "next/server";
 import {
   getSupabaseAdminClient,
   mapConversationRecord,
 } from "@/app/lib/supabase";
+import { enforceApiRateLimit, jsonNoStore } from "@/app/lib/security";
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
+  const rateLimitError = enforceApiRateLimit(req, "share-read");
+  if (rateLimitError) return rateLimitError;
+
   const { token } = await params;
   const supabase = getSupabaseAdminClient();
 
   if (!supabase) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Shared conversations are not configured yet." },
       { status: 503 }
     );
@@ -23,17 +26,17 @@ export async function GET(_req, { params }) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return jsonNoStore({ error: error.message }, { status: 500 });
   }
 
   if (!data) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Shared conversation not found." },
       { status: 404 }
     );
   }
 
-  return NextResponse.json({
+  return jsonNoStore({
     conversation: mapConversationRecord(data),
   });
 }
