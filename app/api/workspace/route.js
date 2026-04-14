@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
   getSupabaseAdminClient,
@@ -6,6 +5,11 @@ import {
   mapConversationToRecord,
   sortConversations,
 } from "@/app/lib/supabase";
+import {
+  jsonNoStore,
+  validateRequestOrigin,
+  validateWorkspacePayload,
+} from "@/app/lib/security";
 
 function getServerReadiness() {
   const missing = [];
@@ -40,7 +44,7 @@ async function requireUser() {
   const readiness = getServerReadiness();
   if (!readiness.ready) {
     return {
-      error: NextResponse.json(
+      error: jsonNoStore(
         {
           error: "Account sync is not configured yet.",
           missing: readiness.missing,
@@ -54,7 +58,7 @@ async function requireUser() {
 
   if (!userId) {
     return {
-      error: NextResponse.json(
+      error: jsonNoStore(
         { error: "Sign in to use account sync." },
         { status: 401 }
       ),
@@ -70,7 +74,7 @@ export async function GET() {
 
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Supabase service client is unavailable." },
       { status: 503 }
     );
@@ -90,14 +94,14 @@ export async function GET() {
   ]);
 
   if (conversationsResponse.error) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: conversationsResponse.error.message },
       { status: 500 }
     );
   }
 
   if (workspaceResponse.error) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: workspaceResponse.error.message },
       { status: 500 }
     );
@@ -107,7 +111,7 @@ export async function GET() {
     (conversationsResponse.data || []).map(mapConversationRecord)
   );
 
-  return NextResponse.json({
+  return jsonNoStore({
     conversations,
     activeConversationId:
       workspaceResponse.data?.active_conversation_id || conversations[0]?.id || null,
@@ -118,23 +122,39 @@ export async function GET() {
 }
 
 export async function POST(req) {
+  const originError = validateRequestOrigin(req);
+  if (originError) return originError;
+
   const gate = await requireUser();
   if (gate.error) return gate.error;
 
   const supabase = getSupabaseAdminClient();
   if (!supabase) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Supabase service client is unavailable." },
       { status: 503 }
     );
   }
 
+  const contentType = req.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return jsonNoStore({ error: "Content-Type must be application/json." }, { status: 415 });
+  }
+
   const body = await req.json();
-  const conversations = Array.isArray(body.conversations) ? body.conversations : [];
-  const activeConversationId = body.activeConversationId || null;
-  const usageTimestamps = Array.isArray(body.usageTimestamps)
-    ? body.usageTimestamps
-    : [];
+  let conversations;
+  let activeConversationId;
+  let usageTimestamps;
+
+  try {
+    ({ conversations, activeConversationId, usageTimestamps } =
+      validateWorkspacePayload(body));
+  } catch (error) {
+    return jsonNoStore(
+      { error: error.message || "Workspace payload is invalid." },
+      { status: error.status || 400 }
+    );
+  }
 
   const { data: existingRows, error: existingError } = await supabase
     .from("vanta_conversations")
@@ -142,7 +162,7 @@ export async function POST(req) {
     .eq("user_id", gate.userId);
 
   if (existingError) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: existingError.message },
       { status: 500 }
     );
@@ -161,7 +181,7 @@ export async function POST(req) {
       .in("id", removedIds);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return jsonNoStore({ error: error.message }, { status: 500 });
     }
   }
 
@@ -175,7 +195,7 @@ export async function POST(req) {
       .upsert(records, { onConflict: "id" });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return jsonNoStore({ error: error.message }, { status: 500 });
     }
   }
 
@@ -192,11 +212,11 @@ export async function POST(req) {
     );
 
   if (workspaceError) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: workspaceError.message },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return jsonNoStore({ ok: true });
 }

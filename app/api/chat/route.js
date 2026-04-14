@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { NextResponse } from "next/server";
+import { jsonNoStore, validateChatPayload, validateRequestOrigin } from "@/app/lib/security";
 
 const client = new OpenAI({
   apiKey: process.env.SHUTTLEAI_API_KEY,
@@ -208,7 +208,7 @@ function buildErrorResponse(error) {
   const safeRetryAfter = isRateLimited ? Math.max(retryAfter || 0, 60) : retryAfter;
   const status = error?.status || (retryAfter ? 429 : 500);
 
-  return NextResponse.json(
+  return jsonNoStore(
     {
       error: error.message || "Something went wrong",
       retryAfter: safeRetryAfter,
@@ -220,12 +220,23 @@ function buildErrorResponse(error) {
 
 export async function POST(req) {
   try {
+    const originError = validateRequestOrigin(req);
+    if (originError) return originError;
+
+    const contentType = req.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return jsonNoStore({ error: "Content-Type must be application/json." }, { status: 415 });
+    }
+
     const body = await req.json();
-    const messages = body.messages || [];
-    const selectedModel = body.model || null;
-    const systemPrompt = body.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-    const stream = Boolean(body.stream);
-    const researchMode = Boolean(body.researchMode);
+    const {
+      messages,
+      model: selectedModel,
+      systemPrompt: validatedPrompt,
+      stream,
+      researchMode,
+    } = validateChatPayload(body);
+    const systemPrompt = validatedPrompt || DEFAULT_SYSTEM_PROMPT;
 
     const config = await buildRequest(
       messages,
@@ -268,7 +279,7 @@ export async function POST(req) {
       stream: false,
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       reply: completion.choices[0].message.content,
       researchSources: config.researchResults,
     });

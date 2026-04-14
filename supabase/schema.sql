@@ -26,3 +26,9 @@ create table if not exists public.vanta_workspace_state (
   usage_timestamps jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+alter table public.vanta_conversations enable row level security;
+alter table public.vanta_workspace_state enable row level security;
+
+revoke all on public.vanta_conversations from anon, authenticated;
+revoke all on public.vanta_workspace_state from anon, authenticated;
