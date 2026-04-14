@@ -1363,10 +1363,15 @@ function WorkspaceHeader({
                   )}
                 </div>
                 {showStreamingDots ? (
-                  <div className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.3s]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.15s]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300" />
+                  <div className="flex items-center gap-3 text-white/72">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.3s]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300 [animation-delay:-0.15s]" />
+                      <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-violet-300" />
+                    </div>
+                    <span className="text-sm text-white/58 sm:text-[15px]">
+                      Generating response...
+                    </span>
                   </div>
                 ) : (
                   <MessageBody
