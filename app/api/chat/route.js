@@ -10,9 +10,10 @@ export async function POST(req) {
   try {
     const body = await req.json();
     const messages = body.messages || [];
+    const primaryModel = process.env.SHUTTLEAI_MODEL || "openai/gpt-5.4";
+    const fallbackModel = process.env.SHUTTLEAI_FALLBACK_MODEL || null;
 
-    const completion = await client.chat.completions.create({
-      model: "openai/gpt-5.4",
+    const requestBody = {
       messages: [
         {
           role: "system",
@@ -20,7 +21,28 @@ export async function POST(req) {
         },
         ...messages,
       ],
-    });
+    };
+
+    let completion;
+
+    try {
+      completion = await client.chat.completions.create({
+        model: primaryModel,
+        ...requestBody,
+      });
+    } catch (error) {
+      const isRateLimited =
+        error?.status === 429 || error?.code === "rate_limit_exceeded";
+
+      if (!fallbackModel || !isRateLimited || fallbackModel === primaryModel) {
+        throw error;
+      }
+
+      completion = await client.chat.completions.create({
+        model: fallbackModel,
+        ...requestBody,
+      });
+    }
 
     return NextResponse.json({
       reply: completion.choices[0].message.content,
