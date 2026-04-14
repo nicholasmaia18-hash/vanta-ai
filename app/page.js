@@ -125,6 +125,9 @@ export default function Home() {
   const [banner, setBanner] = useState(null);
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [historyReady, setHistoryReady] = useState(false);
+  const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState(null);
+  const [pendingRenameConversationId, setPendingRenameConversationId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -444,31 +447,15 @@ export default function Home() {
   }
 
   function renameConversation(id) {
-    const nextTitle = window.prompt("Rename conversation");
-    if (!nextTitle?.trim()) return;
+    const conversation = conversations.find((item) => item.id === id);
+    if (!conversation) return;
 
-    updateConversation(id, () => ({
-      title: nextTitle.trim(),
-    }));
+    setPendingRenameConversationId(id);
+    setRenameDraft(conversation.title);
   }
 
   function deleteConversation(id) {
-    if (!window.confirm("Delete this conversation?")) return;
-
-    setConversations((current) => {
-      const remaining = current.filter((conversation) => conversation.id !== id);
-      if (remaining.length === 0) {
-        const freshConversation = createConversation();
-        setActiveConversationId(freshConversation.id);
-        return [freshConversation];
-      }
-
-      if (id === activeConversationId) {
-        setActiveConversationId(remaining[0].id);
-      }
-
-      return remaining;
-    });
+    setPendingDeleteConversationId(id);
   }
 
   function changeModel(nextModel) {
@@ -545,6 +532,51 @@ export default function Home() {
     setPendingAttachments((current) =>
       current.filter((attachment) => attachment.id !== id)
     );
+  }
+
+  function closeDialogs() {
+    setPendingDeleteConversationId(null);
+    setPendingRenameConversationId(null);
+    setRenameDraft("");
+  }
+
+  function confirmDeleteConversation() {
+    if (!pendingDeleteConversationId) return;
+
+    setConversations((current) => {
+      const remaining = current.filter(
+        (conversation) => conversation.id !== pendingDeleteConversationId
+      );
+      if (remaining.length === 0) {
+        const freshConversation = createConversation();
+        setActiveConversationId(freshConversation.id);
+        return [freshConversation];
+      }
+
+      if (pendingDeleteConversationId === activeConversationId) {
+        setActiveConversationId(remaining[0].id);
+      }
+
+      return remaining;
+    });
+
+    closeDialogs();
+    setBanner({ tone: "success", message: "Conversation deleted." });
+  }
+
+  function saveRenameConversation() {
+    const nextTitle = renameDraft.trim();
+    if (!pendingRenameConversationId || !nextTitle) {
+      closeDialogs();
+      return;
+    }
+
+    updateConversation(pendingRenameConversationId, () => ({
+      title: nextTitle,
+    }));
+
+    closeDialogs();
+    setBanner({ tone: "success", message: "Conversation renamed." });
   }
 
   const hasStreamingPlaceholder = messages.some(
@@ -819,7 +851,7 @@ export default function Home() {
                     className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-sm text-white/70"
                   >
                     <span>{attachment.name}</span>
-                    <button onClick={() => removeAttachment(attachment.id)}>×</button>
+                    <button onClick={() => removeAttachment(attachment.id)}>x</button>
                   </div>
                 ))}
               </div>
@@ -902,6 +934,64 @@ export default function Home() {
           </section>
         </section>
       </div>
+      {(pendingDeleteConversationId || pendingRenameConversationId) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[1.8rem] border border-white/10 bg-[#12091d] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+            <div className="mb-5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-violet-200/70">
+                Vanta
+              </p>
+              <h3 className="mt-3 text-2xl font-semibold text-white">
+                {pendingRenameConversationId
+                  ? "Rename conversation"
+                  : "Delete conversation"}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-white/58">
+                {pendingRenameConversationId
+                  ? "Give this conversation a clearer name."
+                  : "This conversation will be removed from your workspace."}
+              </p>
+            </div>
+
+            {pendingRenameConversationId && (
+              <input
+                autoFocus
+                value={renameDraft}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") saveRenameConversation();
+                  if (event.key === "Escape") closeDialogs();
+                }}
+                className="w-full rounded-[1.1rem] border border-white/10 bg-[#090410] px-4 py-3 text-white outline-none placeholder:text-white/25"
+                placeholder="Conversation name"
+              />
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={closeDialogs}
+                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:bg-white/[0.08]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={
+                  pendingRenameConversationId
+                    ? saveRenameConversation
+                    : confirmDeleteConversation
+                }
+                className={`rounded-full px-4 py-2 text-sm font-medium text-white transition ${
+                  pendingRenameConversationId
+                    ? "bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-[0_12px_32px_rgba(168,85,247,0.25)] hover:brightness-110"
+                    : "bg-red-500/85 hover:bg-red-500"
+                }`}
+              >
+                {pendingRenameConversationId ? "Save" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -1014,3 +1104,4 @@ function renderInline(text) {
     return <span key={`${part}-${index}`}>{part}</span>;
   });
 }
+
