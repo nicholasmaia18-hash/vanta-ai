@@ -1,8 +1,6 @@
-import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://vanta-ai-chat.vercel.app";
-const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 export const metadata = {
   metadataBase: new URL(APP_URL),
@@ -10,7 +8,7 @@ export const metadata = {
     default: "Vanta",
     template: "%s • Vanta",
   },
-  description: "Minimal AI workspace with streaming chat, shared threads, and sync-ready conversations.",
+  description: "Minimal AI workspace with streaming chat, screenshots, files, and browser-saved conversations.",
   applicationName: "Vanta",
   icons: {
     icon: "/icon.svg",
@@ -18,7 +16,7 @@ export const metadata = {
   openGraph: {
     title: "Vanta",
     description:
-      "Minimal AI workspace with streaming chat, shared threads, and sync-ready conversations.",
+      "Minimal AI workspace with streaming chat, screenshots, files, and browser-saved conversations.",
     url: APP_URL,
     siteName: "Vanta",
     images: [
@@ -34,7 +32,7 @@ export const metadata = {
     card: "summary_large_image",
     title: "Vanta",
     description:
-      "Minimal AI workspace with streaming chat, shared threads, and sync-ready conversations.",
+      "Minimal AI workspace with streaming chat, screenshots, files, and browser-saved conversations.",
     images: ["/opengraph-image"],
   },
 };
@@ -46,9 +44,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        {clerkEnabled ? <ClerkProvider>{children}</ClerkProvider> : children}
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

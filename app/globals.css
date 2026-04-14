@@ -32,6 +32,24 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 45%);
 }
 
+@media (max-width: 1023px) {
+  body {
+    background-image:
+      radial-gradient(circle at top, rgba(139, 92, 246, 0.22), transparent 34%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 38%);
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    background-image:
+      radial-gradient(circle at top, rgba(139, 92, 246, 0.18), transparent 26%),
+      radial-gradient(circle at 80% 20%, rgba(192, 38, 211, 0.14), transparent 22%),
+      radial-gradient(circle at 20% 75%, rgba(76, 29, 149, 0.18), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 45%);
+  }
+}
+
 button,
 input,
 textarea {

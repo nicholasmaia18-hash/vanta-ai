@@ -1,18 +1,11 @@
 "use client";
 
-import {
-  SignInButton,
-  SignUpButton,
-  UserButton,
-  useAuth,
-} from "@clerk/nextjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageBody } from "./components/message-body";
 import { loadWorkspaceState, saveWorkspaceState } from "./lib/vanta-db";
 import { getSyncReadiness } from "./lib/sync-config";
 import { mergeConversations, sortConversations } from "./lib/supabase";
 
-const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
 const MODEL_OPTIONS = [
   { label: "GPT-5.4", value: "openai/gpt-5.4" },
@@ -145,7 +138,7 @@ function parseSharedConversation() {
 }
 
 function formatSyncStatus(syncStatus) {
-  return syncStatus || "Local only";
+  return syncStatus || "Browser only";
 }
 
 export default function Home() {
@@ -315,7 +308,7 @@ export default function Home() {
           setBanner({
             tone: "info",
             message:
-              "Local mode is active. Cloud sync will unlock once Clerk and Supabase are configured.",
+              "Local mode is active. This browser keeps its own workspace and history.",
           });
         }
 
@@ -349,13 +342,13 @@ export default function Home() {
                   : storedState?.usageTimestamps || []
               );
               setSyncStatus(
-                remoteConversations.length > 0 ? "Synced" : "Signed in - cloud ready"
+                remoteConversations.length > 0 ? "Synced" : "Cloud ready"
               );
             } else {
-              setSyncStatus("Cloud setup pending");
+              setSyncStatus("Sync setup pending");
             }
           } catch {
-            setSyncStatus("Cloud sync unavailable");
+            setSyncStatus("Sync unavailable");
           }
         }
       } catch {
@@ -817,7 +810,7 @@ export default function Home() {
         setBanner({
           tone: "error",
           message:
-            "Image-heavy conversations need account sync before they can be shared reliably.",
+            "Image-heavy conversations are too large for local share links right now.",
         });
         return;
       }
@@ -896,19 +889,15 @@ export default function Home() {
                 <span className="block text-white/50">without the interface noise.</span>
               </h1>
               <p className="mt-4 max-w-xl text-sm leading-7 text-white/54 sm:text-[15px]">
-                Streaming chat, search-ready conversations, public share pages,
-                pasted screenshots, and cloud sync when your account is connected.
+                A cleaner AI workspace with saved local history, quick search,
+                screenshots, file drop, and a calmer layout that adapts between phone and desktop.
               </p>
             </div>
 
             <div className="flex flex-col items-start gap-3 lg:items-end">
-              {clerkEnabled ? (
-                <AuthControls />
-              ) : (
-                <div className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/50">
-                  Auth setup pending
-                </div>
-              )}
+              <div className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/62">
+                Browser-saved mode
+              </div>
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
                 <MetaCard
@@ -940,8 +929,106 @@ export default function Home() {
           </div>
         )}
 
+        <section className="mb-5 space-y-4 lg:hidden">
+          <div className="grid grid-cols-2 gap-3">
+            <MetaCard label="Model" value={MODEL_OPTIONS.find((item) => item.value === activeModel)?.label || "Custom"} />
+            <MetaCard label="Storage" value="This device" />
+            <MetaCard label="Cooldown" value={cooldown > 0 ? `${cooldown}s` : "Ready"} />
+            <MetaCard label="Sharing" value="Link copy" />
+          </div>
+
+          <Panel>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
+                  Mobile workspace
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-white">
+                  Fast access
+                </h2>
+              </div>
+              <button
+                onClick={createNewConversation}
+                className="rounded-[0.95rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-white/80 transition hover:bg-white/[0.09]"
+              >
+                New
+              </button>
+            </div>
+            <input
+              value={conversationSearch}
+              onChange={(event) => setConversationSearch(event.target.value)}
+              placeholder="Search this device"
+              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/28"
+            />
+            <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
+              {filteredConversations.length === 0 ? (
+                <div className="min-w-full rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
+                  Nothing matches this search yet.
+                </div>
+              ) : (
+                filteredConversations.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    className={`min-w-[240px] rounded-[1rem] border px-4 py-3 transition ${
+                      conversation.id === activeConversationId
+                        ? "border-violet-400/25 bg-violet-500/8"
+                        : "border-white/6 bg-white/[0.02]"
+                    }`}
+                  >
+                    <button
+                      onClick={() => setActiveConversationId(conversation.id)}
+                      className="w-full text-left"
+                    >
+                      <p className="truncate text-sm font-medium text-white">
+                        {conversation.title}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/40">
+                        <span>
+                          {MODEL_OPTIONS.find((item) => item.value === conversation.model)
+                            ?.label || conversation.model}
+                        </span>
+                        {conversation.researchMode && <span>Research</span>}
+                        {conversation.publicToken && <span>Shared</span>}
+                      </div>
+                    </button>
+                    <div className="mt-3 flex gap-3 text-xs text-white/40">
+                      <button className="transition hover:text-white/75" onClick={() => renameConversation(conversation.id)}>Rename</button>
+                      <button className="transition hover:text-red-200" onClick={() => deleteConversation(conversation.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Panel>
+              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
+                Snapshot
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <SidebarCard label="Conversations" value={String(analytics.conversationCount)} />
+                <SidebarCard label="Messages" value={String(analytics.totalMessages)} />
+                <SidebarCard label="Voice" value={voiceSupported ? "Ready" : "Off"} />
+                <SidebarCard label="Sync" value={formatSyncStatus(syncStatus)} />
+              </div>
+            </Panel>
+
+            <Panel>
+              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
+                Device mode
+              </p>
+              <div className="mt-4 space-y-3">
+                <SidebarCard label="Storage" value="Saved on this browser" />
+                <SidebarCard label="Sharing" value="Local share links" />
+                <SidebarCard label="Rate limit" value="2 requests per minute" />
+              </div>
+            </Panel>
+          </div>
+        </section>
+
         <section className="grid gap-5 lg:grid-cols-[320px_1fr]">
-          <aside className="space-y-5">
+          <aside className="hidden space-y-5 lg:block">
             <Panel>
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
@@ -1020,8 +1107,8 @@ export default function Home() {
                 <SidebarCard label="Input" value="Enter to send" />
                 <SidebarCard label="Voice" value={voiceSupported ? "Ready" : "Not supported"} />
                 <SidebarCard label="Rate limit" value="2 requests per minute" />
-                <SidebarCard label="Storage" value="Local + account sync ready" />
-                <SidebarCard label="Sharing" value={syncReadiness.ready ? "Public pages + local share links" : "Local share links"} />
+                <SidebarCard label="Storage" value="Saved on this browser" />
+                <SidebarCard label="Sharing" value="Local share links" />
                 <SidebarCard label="Sync state" value={formatSyncStatus(syncStatus)} />
               </div>
             </Panel>
@@ -1435,42 +1522,6 @@ function Panel({ children }) {
   return (
     <div className="rounded-[1.6rem] border border-white/8 bg-[#090410]/88 p-5 shadow-[0_14px_48px_rgba(0,0,0,0.22)]">
       {children}
-    </div>
-  );
-}
-
-function AuthControls() {
-  const { isLoaded, userId } = useAuth();
-
-  if (!isLoaded) {
-    return (
-      <div className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/50">
-        Checking account
-      </div>
-    );
-  }
-
-  if (!userId) {
-    return (
-      <div className="flex flex-wrap gap-2">
-        <SignInButton mode="modal">
-          <button className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/78 transition hover:bg-white/[0.06]">
-            Sign in
-          </button>
-        </SignInButton>
-        <SignUpButton mode="modal">
-          <button className="rounded-[0.95rem] bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 py-2.5 text-sm font-medium text-white shadow-[0_12px_30px_rgba(168,85,247,0.24)] transition hover:brightness-110">
-            Create account
-          </button>
-        </SignUpButton>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm text-white/50">Account sync is active</span>
-      <UserButton afterSignOutUrl="/" />
     </div>
   );
 }
