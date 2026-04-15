@@ -1398,117 +1398,45 @@ export default function Home() {
     cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Send";
 
   return (
-    <main className="min-h-screen bg-[#05010b] text-white">
-      <div className="mx-auto max-w-[1380px] px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-6 overflow-hidden rounded-[1.5rem] border border-white/7 bg-[#090410]/90 p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-[640px]">
-              <div className="mb-4 inline-flex items-center gap-3 rounded-[0.8rem] border border-violet-400/12 bg-violet-500/6 px-3.5 py-2">
-                <span className="h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_12px_#8b5cf6]" />
-                <span className="text-[11px] font-medium uppercase tracking-[0.32em] text-violet-200/90">
-                  Vanta
-                </span>
-              </div>
-              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-[3.2rem]">
-                Focused AI,
-                <span className="block text-white/42">without the interface noise.</span>
-              </h1>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-white/50 sm:text-[15px]">
-                A minimal purple-on-black workspace for chat, screenshots, files,
-                and local history that stays on this device.
-              </p>
-
-              <div className="mt-5 flex flex-wrap gap-2.5">
-                {STARTER_PROMPTS.map((starter) => (
-                  <button
-                    key={starter.title}
-                    onClick={() => setInput(starter.prompt)}
-                    className="rounded-[0.8rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.05] hover:text-white/84"
-                  >
-                    {starter.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 lg:max-w-[520px]">
-              <MetaCard
-                label="Model"
-                value={
-                  MODEL_OPTIONS.find((item) => item.value === activeModel)?.label ||
-                  "Custom"
-                }
-                hint="Switch models per conversation."
-              />
-              <MetaCard
-                label="Privacy"
-                value="This browser only"
-                hint="Chats stay on this device unless you manually export or share one."
-              />
-              <MetaCard
-                label="Requests"
-                value={cooldown > 0 ? `Wait ${cooldown}s` : `${usageCount}/2 used`}
-                hint="The free limit resets every minute."
-              />
-            </div>
-          </div>
-        </header>
-
-        {banner && (
-          <div
-            className={`mb-4 rounded-[0.95rem] border px-4 py-3 text-sm ${
-              banner.tone === "error"
-                ? "border-red-400/18 bg-red-500/8 text-red-200"
-                : banner.tone === "success"
-                  ? "border-emerald-400/18 bg-emerald-500/8 text-emerald-200"
-                  : "border-violet-400/18 bg-violet-500/8 text-violet-200"
-            }`}
-          >
-            {banner.message}
-          </div>
-        )}
-
-        <section className="mb-5 space-y-4 lg:hidden">
-          <div className="grid gap-3">
-            <MetaCard
-              label="Privacy"
-              value="Browser-saved history"
-              hint="Nothing syncs across devices in local mode."
-            />
-          </div>
-
-          <Panel>
+    <main className="min-h-screen bg-[#0b0b0f] text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col lg:flex-row">
+        <aside className="hidden w-[300px] shrink-0 border-r border-white/6 bg-[#0f1014] lg:flex lg:flex-col">
+          <div className="border-b border-white/6 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                  Mobile workspace
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-white">
-                  Fast access
-                </h2>
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/16 bg-violet-500/10 text-sm font-semibold text-violet-100">
+                  V
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-white">Vanta</p>
+                  <p className="text-xs text-white/38">Focused AI workspace</p>
+                </div>
               </div>
               <button
                 onClick={createNewConversation}
-                className="rounded-[0.95rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-white/80 transition hover:bg-white/[0.09]"
+                className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
               >
-                New
+                New chat
               </button>
             </div>
             <input
               value={conversationSearch}
               onChange={(event) => setConversationSearch(event.target.value)}
-              placeholder="Search this device"
-              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/28"
+              placeholder="Search conversations"
+              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-[#14151b] px-4 py-3 text-sm text-white outline-none placeholder:text-white/24"
             />
-            <div className="mt-4 space-y-4">
-              {conversationSections.length === 0 ? (
-                <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
-                  {deferredConversationSearch.trim()
-                    ? "Nothing on this device matches that search yet."
-                    : "No conversations yet."}
-                </div>
-              ) : (
-                conversationSections.map((section) => (
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            {conversationSections.length === 0 ? (
+              <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
+                {deferredConversationSearch.trim()
+                  ? "Nothing matches that search yet."
+                  : "No conversations yet."}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {conversationSections.map((section) => (
                   <ConversationSection
                     key={section.title}
                     title={section.title}
@@ -1518,54 +1446,56 @@ export default function Home() {
                     onSelect={selectConversation}
                     onRename={renameConversation}
                     onDelete={deleteConversation}
-                    mobile
                   />
-                ))
-              )}
-            </div>
-          </Panel>
-
-          <Panel>
-            <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-              Start here
-            </p>
-            <div className="mt-4 space-y-3 text-sm leading-6 text-white/48">
-              <p>Ask a question, paste a screenshot, or drop in a file.</p>
-              <p>Everything stays in this browser unless you explicitly export or share one conversation.</p>
-              <p>Turn on web context only when you want outside sources and citations.</p>
-            </div>
-          </Panel>
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-[290px_1fr]">
-          <aside className="hidden space-y-5 lg:block">
-            <Panel>
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                  Conversations
-                </p>
-                <button
-                  onClick={createNewConversation}
-                  className="rounded-[0.95rem] border border-white/10 bg-white/[0.05] px-3 py-2 text-xs text-white/80 transition hover:bg-white/[0.09]"
-                >
-                  New
-                </button>
+                ))}
               </div>
-              <input
-                value={conversationSearch}
-                onChange={(event) => setConversationSearch(event.target.value)}
-                placeholder="Search this browser"
-                className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/28"
-              />
-              <div className="mt-4 space-y-4">
-                {conversationSections.length === 0 ? (
-                  <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
-                    {deferredConversationSearch.trim()
-                      ? "Nothing on this device matches that search yet."
-                      : "No conversations yet."}
-                  </div>
-                ) : (
-                  conversationSections.map((section) => (
+            )}
+          </div>
+
+          <div className="border-t border-white/6 px-4 py-4 text-sm leading-6 text-white/42">
+            <p className="font-medium text-white/72">Private by default</p>
+            <p className="mt-2">
+              Conversations stay in this browser unless you export or share one
+              yourself.
+            </p>
+          </div>
+        </aside>
+
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+          <header className="border-b border-white/6 bg-[#0f1014]/92 px-4 py-4 backdrop-blur lg:hidden">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/16 bg-violet-500/10 text-sm font-semibold text-violet-100">
+                  V
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-white">Vanta</p>
+                  <p className="text-xs text-white/38">Focused AI workspace</p>
+                </div>
+              </div>
+              <button
+                onClick={createNewConversation}
+                className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
+              >
+                New
+              </button>
+            </div>
+            <input
+              value={conversationSearch}
+              onChange={(event) => setConversationSearch(event.target.value)}
+              placeholder="Search conversations"
+              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-[#14151b] px-4 py-3 text-sm text-white outline-none placeholder:text-white/24"
+            />
+            <div className="mt-4">
+              {conversationSections.length === 0 ? (
+                <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-4 text-sm text-white/40">
+                  {deferredConversationSearch.trim()
+                    ? "Nothing matches that search yet."
+                    : "No conversations yet."}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {conversationSections.map((section) => (
                     <ConversationSection
                       key={section.title}
                       title={section.title}
@@ -1575,100 +1505,96 @@ export default function Home() {
                       onSelect={selectConversation}
                       onRename={renameConversation}
                       onDelete={deleteConversation}
+                      mobile
                     />
-                  ))
-                )}
-              </div>
-            </Panel>
+                  ))}
+                </div>
+              )}
+            </div>
+          </header>
 
-            <Panel>
-              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                Privacy + behavior
-              </p>
-              <div className="mt-4 space-y-4 text-sm leading-6 text-white/44">
-                <p>
-                  <span className="text-white/74">Local history:</span> conversations stay on this
-                  browser unless you export or share one on purpose.
-                </p>
-                <p>
-                  <span className="text-white/74">Web context:</span>{" "}
-                  {researchMode
-                    ? "enabled for this conversation, so Vanta can pull outside sources and citations."
-                    : "off right now, so Vanta stays focused on what you type, paste, or attach."}
-                </p>
-                <p>
-                  <span className="text-white/74">Sharing:</span> export downloads the active chat, and share only includes the conversation you choose.
-                </p>
-              </div>
-            </Panel>
-          </aside>
-
-          <section
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            className={`relative rounded-[1.55rem] border bg-[#090410]/88 p-5 shadow-[0_14px_52px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6 ${
-              dragActive ? "border-violet-400/35" : "border-white/8"
-            }`}
-          >
-            {dragActive && (
-              <div className="pointer-events-none absolute inset-4 z-10 flex items-center justify-center rounded-[1.4rem] border border-dashed border-violet-400/40 bg-violet-500/8 text-sm text-violet-100">
-                Drop screenshots, images, or files anywhere in the workspace
+          <div className="flex flex-1 flex-col px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+            {banner && (
+              <div
+                className={`mb-4 rounded-[0.95rem] border px-4 py-3 text-sm ${
+                  banner.tone === "error"
+                    ? "border-red-400/18 bg-red-500/8 text-red-200"
+                    : banner.tone === "success"
+                      ? "border-emerald-400/18 bg-emerald-500/8 text-emerald-200"
+                      : "border-violet-400/18 bg-violet-500/8 text-violet-200"
+                }`}
+              >
+                {banner.message}
               </div>
             )}
 
-            <WorkspaceHeader
-              activeConversation={activeConversation}
-              activeModel={activeModel}
-              cancelEditingMessage={cancelEditingMessage}
-              buttonLabel={buttonLabel}
-              changeModel={changeModel}
-              cooldown={cooldown}
-              copyMessage={copyMessage}
-              editDraft={editDraft}
-              editingMessageId={editingMessageId}
-              exportConversation={exportConversation}
-              fileInputRef={fileInputRef}
-              hasCustomPrompt={hasCustomPrompt}
-              hasStreamingPlaceholder={hasStreamingPlaceholder}
-              input={input}
-              isListening={isListening}
-              loading={loading}
-              messages={messages}
-              messagesEndRef={messagesEndRef}
-              pendingAttachments={pendingAttachments}
-              latestRetryableAssistantId={latestRetryableAssistantId}
-              removeAttachment={removeAttachment}
-              researchMode={researchMode}
-              regenerateLatestResponse={regenerateLatestResponse}
-              saveEditedMessage={saveEditedMessage}
-              setInput={setInput}
-              setEditDraft={setEditDraft}
-              setMessageFeedback={setMessageFeedback}
-              setShowPromptEditor={setShowPromptEditor}
-              shareConversation={shareConversation}
-              showPromptEditor={showPromptEditor}
-              startEditingMessage={startEditingMessage}
-              toggleResearchMode={toggleResearchMode}
-              toggleMessageFavorite={toggleMessageFavorite}
-              toggleMessagePin={toggleMessagePin}
-              toggleVoiceInput={toggleVoiceInput}
-              updateSystemPrompt={updateSystemPrompt}
-              activeSystemPrompt={activeSystemPrompt}
-              usageCount={usageCount}
-              handleAttachmentChange={handleAttachmentChange}
-              handleKeyDown={handleKeyDown}
-              handlePaste={handlePaste}
-              sendMessage={sendMessage}
-              voiceSupported={voiceSupported}
-              resetConversation={resetConversation}
-              applyPreset={applyPreset}
-              showPresetMenu={showPresetMenu}
-              setShowPresetMenu={setShowPresetMenu}
-              presetMenuRef={presetMenuRef}
-            />
-          </section>
-        </section>
+            <section
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              className={`relative mx-auto flex w-full max-w-[980px] flex-1 flex-col rounded-[1.55rem] border bg-[#111217]/94 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.24)] sm:p-5 ${
+                dragActive ? "border-violet-400/35" : "border-white/8"
+              }`}
+            >
+              {dragActive && (
+                <div className="pointer-events-none absolute inset-4 z-10 flex items-center justify-center rounded-[1.4rem] border border-dashed border-violet-400/40 bg-violet-500/8 text-sm text-violet-100">
+                  Drop screenshots, images, or files anywhere in the workspace
+                </div>
+              )}
+
+              <WorkspaceHeader
+                activeConversation={activeConversation}
+                activeModel={activeModel}
+                cancelEditingMessage={cancelEditingMessage}
+                buttonLabel={buttonLabel}
+                changeModel={changeModel}
+                cooldown={cooldown}
+                copyMessage={copyMessage}
+                editDraft={editDraft}
+                editingMessageId={editingMessageId}
+                exportConversation={exportConversation}
+                fileInputRef={fileInputRef}
+                hasCustomPrompt={hasCustomPrompt}
+                hasStreamingPlaceholder={hasStreamingPlaceholder}
+                input={input}
+                isListening={isListening}
+                loading={loading}
+                messages={messages}
+                messagesEndRef={messagesEndRef}
+                pendingAttachments={pendingAttachments}
+                latestRetryableAssistantId={latestRetryableAssistantId}
+                removeAttachment={removeAttachment}
+                researchMode={researchMode}
+                regenerateLatestResponse={regenerateLatestResponse}
+                saveEditedMessage={saveEditedMessage}
+                setInput={setInput}
+                setEditDraft={setEditDraft}
+                setMessageFeedback={setMessageFeedback}
+                setShowPromptEditor={setShowPromptEditor}
+                shareConversation={shareConversation}
+                showPromptEditor={showPromptEditor}
+                startEditingMessage={startEditingMessage}
+                toggleResearchMode={toggleResearchMode}
+                toggleMessageFavorite={toggleMessageFavorite}
+                toggleMessagePin={toggleMessagePin}
+                toggleVoiceInput={toggleVoiceInput}
+                updateSystemPrompt={updateSystemPrompt}
+                activeSystemPrompt={activeSystemPrompt}
+                usageCount={usageCount}
+                handleAttachmentChange={handleAttachmentChange}
+                handleKeyDown={handleKeyDown}
+                handlePaste={handlePaste}
+                sendMessage={sendMessage}
+                voiceSupported={voiceSupported}
+                resetConversation={resetConversation}
+                applyPreset={applyPreset}
+                showPresetMenu={showPresetMenu}
+                setShowPresetMenu={setShowPresetMenu}
+                presetMenuRef={presetMenuRef}
+              />
+            </section>
+          </div>
+        </div>
       </div>
 
       {(pendingDeleteConversationId || pendingRenameConversationId) && (
@@ -1772,22 +1698,27 @@ function WorkspaceHeader({
 
   return (
     <>
-      <div className="mb-5 flex flex-col gap-4 border-b border-white/8 pb-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-              Conversation
+      <div className="mb-4 border-b border-white/6 pb-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-white/28">
+              Vanta
             </p>
-            <h2 className="mt-2 text-[2rem] font-semibold tracking-[-0.035em] text-white">
-              {activeConversation?.title || "Chat"}
+            <h2 className="mt-2 text-[1.9rem] font-semibold tracking-[-0.04em] text-white">
+              {activeConversation?.title || "New chat"}
             </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/42">
+              {hasUserMessages
+                ? "Continue the thread, switch tools only when needed, and keep the prompt focused on one task at a time."
+                : "Ask a question, drop in a file, or paste a screenshot to start the conversation."}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 pr-1 sm:flex-wrap sm:overflow-visible">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 pr-1 lg:max-w-[560px] lg:flex-wrap lg:justify-end lg:overflow-visible">
             <select
               value={activeModel}
               onChange={(event) => changeModel(event.target.value)}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 outline-none"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/72 outline-none"
             >
               {MODEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1797,58 +1728,58 @@ function WorkspaceHeader({
             </select>
             <button
               onClick={toggleResearchMode}
-              className={`shrink-0 rounded-[0.95rem] border px-3 py-2.5 text-sm transition ${
+              className={`shrink-0 rounded-[0.9rem] border px-3 py-2.5 text-sm transition ${
                 researchMode
-                  ? "border-violet-400/25 bg-violet-500/12 text-violet-100"
-                  : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                  ? "border-violet-400/22 bg-violet-500/10 text-violet-100"
+                  : "border-white/8 bg-[#16171d] text-white/70 hover:bg-white/[0.05]"
                 }`}
             >
               {researchMode ? "Web context on" : "Web context off"}
             </button>
             <button
               onClick={() => setShowPromptEditor((current) => !current)}
-              className={`shrink-0 rounded-[0.95rem] border px-3 py-2.5 text-sm transition ${
+              className={`shrink-0 rounded-[0.9rem] border px-3 py-2.5 text-sm transition ${
                 showPromptEditor
-                  ? "border-violet-400/25 bg-violet-500/12 text-violet-100"
-                  : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+                  ? "border-violet-400/22 bg-violet-500/10 text-violet-100"
+                  : "border-white/8 bg-[#16171d] text-white/70 hover:bg-white/[0.05]"
               }`}
             >
               {showPromptEditor ? "Hide instructions" : "Instructions"}
             </button>
             <button
               onClick={shareConversation}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
             >
               Share
             </button>
             <button
               onClick={exportConversation}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
             >
               Export
             </button>
             <button
               onClick={resetConversation}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
             >
               Reset
             </button>
             <button
               onClick={regenerateLatestResponse}
               disabled={!latestRetryableAssistantId || loading || cooldown > 0}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:text-white/28"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/28"
             >
               Regenerate
             </button>
             {cooldown > 0 && (
-              <div className="shrink-0 rounded-[0.95rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
+              <div className="shrink-0 rounded-[0.9rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
                 Wait {cooldown}s
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/38">
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/38">
           <InlineStatus
             label="History"
             value="Saved only in this browser."
@@ -1872,7 +1803,7 @@ function WorkspaceHeader({
         </div>
 
         {showPromptEditor && (
-          <div className="rounded-[1rem] border border-white/8 bg-white/[0.02] p-4">
+          <div className="mt-4 rounded-[1rem] border border-white/8 bg-[#15161c] p-4">
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
               Conversation instructions
             </p>
@@ -1889,7 +1820,7 @@ function WorkspaceHeader({
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/34">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/32">
         <span>{usageCount}/2 requests used in the last minute</span>
         <span className="text-white/18">|</span>
         <span>Shift+Enter adds a new line</span>
@@ -1928,27 +1859,28 @@ function WorkspaceHeader({
         </div>
       )}
 
-      <div className="h-[500px] overflow-y-auto rounded-[1.45rem] border border-white/8 bg-[#07030d] p-4 sm:h-[580px] sm:p-5">
+      <div className="min-h-[460px] flex-1 overflow-y-auto rounded-[1.35rem] border border-white/6 bg-[#0d0e13] p-4 sm:p-5">
         <div className="space-y-4">
           {!hasUserMessages && (
-            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.03] p-5">
+            <div className="mx-auto max-w-3xl rounded-[1.2rem] border border-white/6 bg-[#14151b] p-6">
               <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/34">
                 Start here
               </p>
-              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-white">
-                Use Vanta for one focused task at a time.
+              <h3 className="mt-3 text-[2rem] font-semibold tracking-[-0.04em] text-white">
+                How can Vanta help?
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/46">
-                Ask a question, drop in a file, or paste a screenshot. Vanta keeps history in this browser
-                only, so the workspace stays private and simple by default.
+                Ask a question, drop in a file, or paste a screenshot. Vanta keeps
+                history in this browser only, so the workspace stays simple and
+                private by default.
               </p>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {STARTER_PROMPTS.map((starter) => (
                   <button
                     key={starter.title}
                     onClick={() => setInput(starter.prompt)}
-                    className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-4 text-left text-sm leading-6 text-white/68 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white"
+                    className="rounded-[1rem] border border-white/8 bg-[#101117] px-4 py-4 text-left text-sm leading-6 text-white/68 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white"
                   >
                     <span className="block text-white">{starter.title}</span>
                     <span className="mt-2 block text-white/46">{starter.hint}</span>
@@ -1983,8 +1915,8 @@ function WorkspaceHeader({
                 key={message.id || index}
                 className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
                   message.role === "user"
-                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/92 via-violet-600/82 to-fuchsia-600/72 text-white shadow-[0_10px_24px_rgba(76,29,149,0.18)]"
-                    : "border border-white/6 bg-white/[0.03] text-white"
+                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/88 via-violet-600/76 to-fuchsia-600/62 text-white shadow-[0_10px_24px_rgba(76,29,149,0.16)]"
+                    : "border border-white/6 bg-[#15161c] text-white"
                 } ${message.pinned ? "ring-1 ring-violet-300/30" : ""} ${
                   message.favorite ? "shadow-[0_12px_32px_rgba(168,85,247,0.14)]" : ""
                 }`}
@@ -2173,7 +2105,7 @@ function WorkspaceHeader({
         </div>
       </div>
 
-      <div className="mt-5 rounded-[1.2rem] border border-violet-400/10 bg-[#090410] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+      <div className="mt-4 rounded-[1.2rem] border border-white/6 bg-[#101116] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -2181,7 +2113,7 @@ function WorkspaceHeader({
           onPaste={handlePaste}
           rows={3}
           placeholder="Type your message, paste a screenshot, or drag files in..."
-          className="min-h-[118px] w-full resize-none rounded-[1rem] border border-white/8 bg-[#07030d] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/24"
+          className="min-h-[118px] w-full resize-none rounded-[1rem] border border-white/8 bg-[#0c0d12] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/24"
         />
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2259,37 +2191,6 @@ function WorkspaceHeader({
   );
 }
 
-function Panel({ children }) {
-  return (
-    <div className="rounded-[1.45rem] border border-white/8 bg-[#090410]/84 p-5 shadow-[0_10px_34px_rgba(0,0,0,0.18)]">
-      {children}
-    </div>
-  );
-}
-
-function MetaCard({ label, value, hint }) {
-  return (
-    <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/70 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
-        {label}
-      </p>
-      <p className="mt-2 text-sm font-medium text-white/92">{value}</p>
-      {hint && <p className="mt-1 text-xs leading-5 text-white/38">{hint}</p>}
-    </div>
-  );
-}
-
-function SidebarCard({ label, value }) {
-  return (
-    <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/70 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
-        {label}
-      </p>
-      <p className="mt-2 text-sm text-white/80">{value}</p>
-    </div>
-  );
-}
-
 function StatusNote({ label, value }) {
   return (
     <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/58 px-4 py-3">
@@ -2344,8 +2245,8 @@ function ConversationSection({
               key={conversation.id}
               className={`${mobile ? "min-w-[240px]" : ""} rounded-[1rem] border px-4 py-3 transition ${
                 conversation.id === activeConversationId
-                  ? "border-violet-400/22 bg-violet-500/8"
-                  : "border-white/6 bg-white/[0.02]"
+                  ? "border-violet-400/18 bg-violet-500/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                  : "border-white/6 bg-[#14151b] hover:border-white/10 hover:bg-[#171920]"
               }`}
             >
               <button onClick={() => onSelect(conversation.id)} className="w-full text-left">
@@ -2355,10 +2256,10 @@ function ConversationSection({
                     {formatConversationUpdatedAt(conversation.updatedAt)}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/42">
+                <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/38">
                   {preview}
                 </p>
-                <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/40">
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/34">
                   <span>{modelLabel}</span>
                   {conversation.researchMode && <span>Web context</span>}
                   {conversationHasSavedItems(conversation) && <span>Saved</span>}
