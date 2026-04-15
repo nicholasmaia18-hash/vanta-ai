@@ -346,6 +346,7 @@ export default function Home() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [showPresetMenu, setShowPresetMenu] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -353,6 +354,7 @@ export default function Home() {
   const deferredConversationSearch = useDeferredValue(conversationSearch);
   const isRestoringDraftRef = useRef(false);
   const draftsByConversationIdRef = useRef(draftsByConversationId);
+  const presetMenuRef = useRef(null);
   draftsByConversationIdRef.current = draftsByConversationId;
 
   const activeConversation = useMemo(
@@ -824,6 +826,19 @@ export default function Home() {
   }, [copiedId]);
 
   useEffect(() => {
+    if (!showPresetMenu) return;
+
+    function handlePointerDown(event) {
+      if (!presetMenuRef.current?.contains(event.target)) {
+        setShowPresetMenu(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [showPresetMenu]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1155,6 +1170,7 @@ export default function Home() {
     setPendingAttachments([]);
     setCooldown(0);
     setShowPromptEditor(false);
+    setShowPresetMenu(false);
     setConversationSearch("");
     startTransition(() => {
       setConversations((current) => [newConversation, ...current]);
@@ -1176,6 +1192,7 @@ export default function Home() {
     setInput("");
     setPendingAttachments([]);
     setCooldown(0);
+    setShowPresetMenu(false);
   }
 
   function renameConversation(id) {
@@ -1242,6 +1259,7 @@ export default function Home() {
   function selectConversation(nextConversationId) {
     setPendingAttachments([]);
     setShowPromptEditor(false);
+    setShowPresetMenu(false);
     startTransition(() => {
       setActiveConversationId(nextConversationId);
     });
@@ -1268,6 +1286,7 @@ export default function Home() {
 
   function applyPreset(value) {
     setInput((current) => (current ? `${value}\n\n${current}` : value));
+    setShowPresetMenu(false);
   }
 
   function removeAttachment(id) {
@@ -1644,6 +1663,9 @@ export default function Home() {
               voiceSupported={voiceSupported}
               resetConversation={resetConversation}
               applyPreset={applyPreset}
+              showPresetMenu={showPresetMenu}
+              setShowPresetMenu={setShowPresetMenu}
+              presetMenuRef={presetMenuRef}
             />
           </section>
         </section>
@@ -1742,6 +1764,9 @@ function WorkspaceHeader({
   voiceSupported,
   resetConversation,
   applyPreset,
+  showPresetMenu,
+  setShowPresetMenu,
+  presetMenuRef,
 }) {
   const hasUserMessages = messages.some((message) => message.role === "user");
 
@@ -1776,9 +1801,19 @@ function WorkspaceHeader({
                 researchMode
                   ? "border-violet-400/25 bg-violet-500/12 text-violet-100"
                   : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
-              }`}
+                }`}
             >
               {researchMode ? "Web context on" : "Web context off"}
+            </button>
+            <button
+              onClick={() => setShowPromptEditor((current) => !current)}
+              className={`shrink-0 rounded-[0.95rem] border px-3 py-2.5 text-sm transition ${
+                showPromptEditor
+                  ? "border-violet-400/25 bg-violet-500/12 text-violet-100"
+                  : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
+              }`}
+            >
+              {showPromptEditor ? "Hide instructions" : "Instructions"}
             </button>
             <button
               onClick={shareConversation}
@@ -1813,64 +1848,36 @@ function WorkspaceHeader({
           </div>
         </div>
 
-        <div className="rounded-[1rem] border border-white/8 bg-white/[0.02] px-4 py-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
-                Guided actions
-              </p>
-              <p className="mt-2 text-sm leading-6 text-white/40">
-                Start faster without adding more UI than you need.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 lg:max-w-[620px] lg:justify-end">
-              {PROMPT_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  onClick={() => applyPreset(preset.value)}
-                  className="rounded-[0.78rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/58 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
-                >
-                  {preset.label}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowPromptEditor((current) => !current)}
-                className="rounded-[0.78rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/74 transition hover:bg-white/[0.06]"
-              >
-                {showPromptEditor ? "Hide instructions" : "Edit instructions"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 text-sm leading-6 text-white/40 lg:grid-cols-3">
-            <StatusNote
-              label="History"
-              value="Saved only in this browser. Nothing syncs unless you explicitly turn that on later."
-            />
-            <StatusNote
-              label="Research"
-              value={
-                researchMode
-                  ? "Web context is enabled, so Vanta can pull outside sources for this conversation."
-                  : "Web context is off, so replies use only what you provide here."
-              }
-            />
-            <StatusNote
-              label="Instructions"
-              value={
-                hasCustomPrompt
-                  ? "Custom instructions shape only this conversation."
-                  : "Default Vanta instructions keep replies concise and clear."
-              }
-            />
-          </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/38">
+          <InlineStatus
+            label="History"
+            value="Saved only in this browser."
+          />
+          <InlineStatus
+            label="Research"
+            value={
+              researchMode
+                ? "Web context is active for this conversation."
+                : "Web context is off."
+            }
+          />
+          <InlineStatus
+            label="Instructions"
+            value={
+              hasCustomPrompt
+                ? "Custom instructions are shaping replies."
+                : "Default instructions are active."
+            }
+          />
         </div>
 
         {showPromptEditor && (
           <div className="rounded-[1rem] border border-white/8 bg-white/[0.02] p-4">
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
               Conversation instructions
+            </p>
+            <p className="mt-2 text-sm leading-6 text-white/42">
+              These instructions only affect this conversation and stay with it in this browser.
             </p>
             <textarea
               value={activeSystemPrompt}
@@ -2179,6 +2186,39 @@ function WorkspaceHeader({
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative" ref={presetMenuRef}>
+              <button
+                onClick={() => setShowPresetMenu((current) => !current)}
+                className={`rounded-[0.82rem] border px-3 py-2 text-sm transition ${
+                  showPresetMenu
+                    ? "border-violet-400/20 bg-violet-500/10 text-violet-100"
+                    : "border-white/8 bg-transparent text-white/62 hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
+                }`}
+              >
+                Quick actions
+              </button>
+              {showPresetMenu && (
+                <div className="absolute bottom-full left-0 z-20 mb-2 w-[250px] rounded-[1rem] border border-white/8 bg-[#12091d] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.32)]">
+                  <p className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-white/30">
+                    Insert prompt
+                  </p>
+                  <div className="space-y-1">
+                    {PROMPT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        onClick={() => applyPreset(preset.value)}
+                        className="flex w-full items-center justify-between rounded-[0.8rem] px-3 py-2 text-left text-sm text-white/66 transition hover:bg-white/[0.05] hover:text-white"
+                      >
+                        <span>{preset.label}</span>
+                        <span className="text-[11px] uppercase tracking-[0.18em] text-white/24">
+                          /{preset.label.toLowerCase()}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="rounded-[0.82rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
@@ -2193,7 +2233,7 @@ function WorkspaceHeader({
               {isListening ? "Stop voice input" : "Voice input"}
             </button>
             <span className="text-xs text-white/34">
-              Shift+Enter for a new line. Try /summarize, /rewrite, /debug, or /explain.
+              Shift+Enter for a new line. Type a slash command or open Quick actions when you need a starting frame.
             </span>
           </div>
 
@@ -2258,6 +2298,17 @@ function StatusNote({ label, value }) {
       </p>
       <p className="mt-2 text-sm leading-6 text-white/74">{value}</p>
     </div>
+  );
+}
+
+function InlineStatus({ label, value }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-[0.9rem] border border-white/8 bg-white/[0.025] px-3 py-2 text-sm text-white/52">
+      <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/28">
+        {label}
+      </span>
+      <span className="text-white/68">{value}</span>
+    </span>
   );
 }
 
