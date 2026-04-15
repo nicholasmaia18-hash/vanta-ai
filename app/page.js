@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { MessageBody } from "./components/message-body";
 import { loadWorkspaceState, saveWorkspaceState } from "./lib/vanta-db";
 import { getSyncReadiness } from "./lib/sync-config";
@@ -17,6 +24,26 @@ const PROMPT_PRESETS = [
   { label: "Rewrite", value: "Rewrite this to sound more polished:" },
   { label: "Debug", value: "Debug this step by step and point out the likely cause:" },
 ];
+const STARTER_PROMPTS = [
+  {
+    title: "Summarize notes",
+    prompt: "Summarize this article into five takeaways.",
+    hint: "Turn rough material into a short list of what matters.",
+  },
+  {
+    title: "Draft a message",
+    prompt: "Help me turn these notes into a polished email.",
+    hint: "Write a cleaner email, DM, or status update.",
+  },
+  {
+    title: "Review a screenshot",
+    prompt: "Look at this screenshot and explain what stands out.",
+    hint: "Break down an interface, error, or visual detail.",
+  },
+];
+const SLASH_COMMANDS = Object.fromEntries(
+  PROMPT_PRESETS.map((preset) => [preset.label.toLowerCase(), preset.value])
+);
 const DEFAULT_SYSTEM_PROMPT =
   "You are Vanta, a clear, helpful AI assistant inside a minimalist web app. Keep responses concise but useful. Use short paragraphs by default. Use flat bullet lists only when they genuinely improve clarity. When giving steps, prefer brief numbered lists. If code helps, include small clean code blocks with a short explanation. Avoid filler, hype, and overly casual phrasing.";
 const DEFAULT_ASSISTANT_MESSAGE = {
@@ -162,8 +189,131 @@ function parseSharedConversation() {
   }
 }
 
-function formatSyncStatus(syncStatus) {
-  return syncStatus || "Browser only";
+function formatConversationUpdatedAt(timestamp) {
+  const diff = Date.now() - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diff < hour) {
+    const minutes = Math.max(1, Math.round(diff / minute));
+    return `${minutes}m ago`;
+  }
+
+  if (diff < day) {
+    const hours = Math.round(diff / hour);
+    return `${hours}h ago`;
+  }
+
+  const days = Math.round(diff / day);
+  return `${days}d ago`;
+}
+
+function conversationHasSavedItems(conversation) {
+  return conversation.messages.some(
+    (message) => message.favorite || message.pinned || message.feedback === "up"
+  );
+}
+
+function conversationHasCustomInstructions(conversation) {
+  return (conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT).trim() !==
+    DEFAULT_SYSTEM_PROMPT.trim();
+}
+
+function getConversationPreview(conversation) {
+  const latestMessage = [...conversation.messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.id !== DEFAULT_ASSISTANT_MESSAGE.id &&
+        (message.content?.trim() || (message.attachments || []).length > 0)
+    );
+
+  if (!latestMessage) return "No messages yet.";
+
+  if (latestMessage.content?.trim()) {
+    return latestMessage.content.trim().replace(/\s+/g, " ").slice(0, 72);
+  }
+
+  const attachmentCount = latestMessage.attachments?.length || 0;
+  return `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"} ready`;
+}
+
+function normalizeComposerInput(value) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) return trimmed;
+
+  const [command, ...rest] = trimmed.slice(1).split(/\s+/);
+  const preset = SLASH_COMMANDS[command?.toLowerCase()];
+  const remainder = rest.join(" ").trim();
+
+  if (!preset || !remainder) return trimmed;
+  return `${preset}\n\n${remainder}`;
+}
+
+function scoreConversationMatch(conversation, query) {
+  const normalizedQuery = query.toLowerCase().trim();
+  if (!normalizedQuery) return 0;
+
+  const title = conversation.title.toLowerCase();
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const recentMessages = [...conversation.messages].reverse().slice(0, 6);
+  const allContent = [title, ...conversation.messages.map((message) => message.content || "")]
+    .join(" ")
+    .toLowerCase();
+
+  let score = 0;
+
+  if (title === normalizedQuery) score += 140;
+  else if (title.startsWith(normalizedQuery)) score += 100;
+  else if (title.includes(normalizedQuery)) score += 70;
+
+  if (allContent.includes(normalizedQuery)) score += 30;
+
+  tokens.forEach((token) => {
+    if (title.includes(token)) score += 18;
+    if (recentMessages.some((message) => (message.content || "").toLowerCase().includes(token))) {
+      score += 12;
+    } else if (allContent.includes(token)) {
+      score += 6;
+    }
+  });
+
+  if (conversationHasSavedItems(conversation)) score += 12;
+  if (conversationHasCustomInstructions(conversation)) score += 8;
+
+  return score;
+}
+
+function getAssistantContextBadges(message) {
+  if (message.role !== "assistant" || !message.requestContext) return [];
+
+  const badges = [];
+  if (message.requestContext.researchEnabled) badges.push("Web context enabled");
+  if (message.requestContext.attachmentCount > 0) {
+    badges.push(
+      `${message.requestContext.attachmentCount} attachment${
+        message.requestContext.attachmentCount === 1 ? "" : "s"
+      } included`
+    );
+  }
+  if (message.requestContext.customInstructions) badges.push("Custom instructions");
+  return badges;
+}
+
+function areDraftAttachmentsEqual(left = [], right = []) {
+  if (left.length !== right.length) return false;
+
+  return left.every((attachment, index) => {
+    const nextAttachment = right[index];
+    return (
+      attachment?.id === nextAttachment?.id &&
+      attachment?.name === nextAttachment?.name &&
+      attachment?.kind === nextAttachment?.kind &&
+      attachment?.mimeType === nextAttachment?.mimeType &&
+      attachment?.data === nextAttachment?.data
+    );
+  });
 }
 
 export default function Home() {
@@ -177,6 +327,7 @@ export default function Home() {
   const [copiedId, setCopiedId] = useState(null);
   const [banner, setBanner] = useState(null);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [draftsByConversationId, setDraftsByConversationId] = useState({});
   const [requestHistory, setRequestHistory] = useState([]);
   const [historyReady, setHistoryReady] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
@@ -199,6 +350,10 @@ export default function Home() {
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceBaseInputRef = useRef("");
+  const deferredConversationSearch = useDeferredValue(conversationSearch);
+  const isRestoringDraftRef = useRef(false);
+  const draftsByConversationIdRef = useRef(draftsByConversationId);
+  draftsByConversationIdRef.current = draftsByConversationId;
 
   const activeConversation = useMemo(
     () =>
@@ -221,15 +376,66 @@ export default function Home() {
   ).length;
 
   const filteredConversations = useMemo(() => {
-    if (!conversationSearch.trim()) return sortConversations(conversations);
-    const query = conversationSearch.toLowerCase().trim();
-    return sortConversations(conversations).filter((conversation) =>
-      [conversation.title, ...conversation.messages.map((message) => message.content)]
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [conversationSearch, conversations]);
+    if (!deferredConversationSearch.trim()) return sortConversations(conversations);
+    const query = deferredConversationSearch.toLowerCase().trim();
+    return sortConversations(conversations)
+      .map((conversation) => ({
+        conversation,
+        score: scoreConversationMatch(conversation, query),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return right.conversation.updatedAt - left.conversation.updatedAt;
+      })
+      .map((entry) => entry.conversation);
+  }, [deferredConversationSearch, conversations]);
+
+  const conversationSections = useMemo(() => {
+    if (deferredConversationSearch.trim()) {
+      return [
+        {
+          title: "Search results",
+          description:
+            filteredConversations.length > 0
+              ? `${filteredConversations.length} match${
+                  filteredConversations.length === 1 ? "" : "es"
+                } across titles and messages.`
+              : "No conversations match this search yet.",
+          conversations: filteredConversations,
+        },
+      ];
+    }
+
+    const saved = [];
+    const recent = [];
+
+    sortConversations(conversations).forEach((conversation) => {
+      if (conversationHasSavedItems(conversation)) saved.push(conversation);
+      else recent.push(conversation);
+    });
+
+    return [
+      ...(saved.length > 0
+        ? [
+            {
+              title: `Saved (${saved.length})`,
+              description: "Pinned, favorited, or marked helpful.",
+              conversations: saved,
+            },
+          ]
+        : []),
+      ...(recent.length > 0
+        ? [
+            {
+              title: `Recent (${recent.length})`,
+              description: "Latest conversations kept on this browser.",
+              conversations: recent,
+            },
+          ]
+        : []),
+    ];
+  }, [deferredConversationSearch, conversations, filteredConversations]);
 
   const analytics = useMemo(() => {
     const totalMessages = conversations.reduce(
@@ -396,6 +602,7 @@ export default function Home() {
             uniqueLocal[0]?.id ||
             null
         );
+        setDraftsByConversationId(storedState?.draftsByConversationId || {});
         setUsageTimestamps(storedState?.usageTimestamps || []);
         setRequestHistory(storedState?.requestHistory || []);
 
@@ -410,13 +617,13 @@ export default function Home() {
         if (sharedConversation) {
           setBanner({
             tone: "info",
-            message: "Shared conversation loaded into your workspace.",
+            message: "Shared conversation added to this browser's workspace.",
           });
         } else if (!syncReadiness.ready) {
           setBanner({
             tone: "info",
             message:
-              "Local mode is active. This browser keeps its own workspace and history.",
+              "Private by default: chats stay on this browser unless you export or share one.",
           });
         }
 
@@ -463,6 +670,7 @@ export default function Home() {
         const freshConversation = sharedConversation || createConversation();
         setConversations([freshConversation]);
         setActiveConversationId(freshConversation.id);
+        setDraftsByConversationId({});
       } finally {
         if (!cancelled) {
           setHistoryReady(true);
@@ -484,6 +692,7 @@ export default function Home() {
     saveWorkspaceState({
       conversations,
       activeConversationId,
+      draftsByConversationId,
       usageTimestamps,
       requestHistory,
     }).catch(() => {
@@ -492,7 +701,14 @@ export default function Home() {
         message: "Unable to save workspace state in this browser.",
       });
     });
-  }, [conversations, activeConversationId, usageTimestamps, requestHistory, historyReady]);
+  }, [
+    conversations,
+    activeConversationId,
+    draftsByConversationId,
+    usageTimestamps,
+    requestHistory,
+    historyReady,
+  ]);
 
   useEffect(() => {
     if (!historyReady || !remoteReady || !syncReadiness.ready || loading) return;
@@ -530,6 +746,54 @@ export default function Home() {
     syncReadiness.ready,
     loading,
   ]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+
+    const nextDraft = draftsByConversationIdRef.current[activeConversationId];
+    isRestoringDraftRef.current = true;
+    setInput(nextDraft?.input || "");
+    setPendingAttachments(nextDraft?.attachments || []);
+
+    const timer = setTimeout(() => {
+      isRestoringDraftRef.current = false;
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!activeConversationId || isRestoringDraftRef.current) return;
+
+    setDraftsByConversationId((current) => {
+      const existingDraft = current[activeConversationId];
+      const nextInput = input;
+      const nextAttachments = pendingAttachments;
+      const hasDraft = nextInput.trim().length > 0 || nextAttachments.length > 0;
+
+      if (!hasDraft) {
+        if (!existingDraft) return current;
+        const nextState = { ...current };
+        delete nextState[activeConversationId];
+        return nextState;
+      }
+
+      if (
+        existingDraft?.input === nextInput &&
+        areDraftAttachmentsEqual(existingDraft?.attachments || [], nextAttachments)
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [activeConversationId]: {
+          input: nextInput,
+          attachments: nextAttachments,
+        },
+      };
+    });
+  }, [activeConversationId, input, pendingAttachments]);
 
   useEffect(() => {
     if (cooldown <= 0) {
@@ -640,10 +904,17 @@ export default function Home() {
     nextTitle,
   }) {
     const streamingMessageId = crypto.randomUUID();
+    const requestContext = {
+      researchEnabled: Boolean(conversationSnapshot.researchMode),
+      attachmentCount:
+        requestMessages[requestMessages.length - 1]?.attachments?.length || 0,
+      customInstructions: conversationHasCustomInstructions(conversationSnapshot),
+    };
     const assistantPlaceholder = {
       id: streamingMessageId,
       role: "assistant",
       content: "",
+      requestContext,
     };
     const startedAt = Date.now();
 
@@ -697,6 +968,7 @@ export default function Home() {
               id: crypto.randomUUID(),
               role: "assistant",
               content: errorMessage,
+              requestContext,
             },
           ],
         }));
@@ -729,8 +1001,7 @@ export default function Home() {
         messages: conversation.messages.map((message) =>
           message.id === streamingMessageId
             ? {
-                id: streamingMessageId,
-                role: "assistant",
+                ...message,
                 content: streamedText.trim() || "No response returned.",
               }
             : message
@@ -749,7 +1020,12 @@ export default function Home() {
         title: nextTitle,
         messages: [
           ...visibleMessages,
-          { id: crypto.randomUUID(), role: "assistant", content: errorMessage },
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: errorMessage,
+            requestContext,
+          },
         ],
       }));
       recordRequest({
@@ -764,6 +1040,15 @@ export default function Home() {
     }
   }
 
+  function clearConversationDraft(conversationId) {
+    setDraftsByConversationId((current) => {
+      if (!current[conversationId]) return current;
+      const nextState = { ...current };
+      delete nextState[conversationId];
+      return nextState;
+    });
+  }
+
   async function sendMessage() {
     if (
       (!input.trim() && pendingAttachments.length === 0) ||
@@ -775,10 +1060,11 @@ export default function Home() {
     }
 
     const conversationSnapshot = activeConversation;
+    const normalizedInput = normalizeComposerInput(input);
     const userMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: input.trim() || "Uploaded files",
+      content: normalizedInput || "Uploaded files",
       attachments: pendingAttachments,
     };
     const hasMeaningfulTitle =
@@ -790,6 +1076,7 @@ export default function Home() {
 
     setInput("");
     setPendingAttachments([]);
+    clearConversationDraft(conversationSnapshot.id);
 
     await requestAssistantReply({
       conversationSnapshot,
@@ -864,16 +1151,21 @@ export default function Home() {
 
   function createNewConversation() {
     const newConversation = createConversation(activeModel);
-    setConversations((current) => [newConversation, ...current]);
-    setActiveConversationId(newConversation.id);
     setInput("");
     setPendingAttachments([]);
     setCooldown(0);
     setShowPromptEditor(false);
+    setConversationSearch("");
+    startTransition(() => {
+      setConversations((current) => [newConversation, ...current]);
+      setActiveConversationId(newConversation.id);
+    });
   }
 
   function resetConversation() {
     if (!activeConversation) return;
+
+    clearConversationDraft(activeConversation.id);
 
     updateConversation(activeConversation.id, () => ({
       title: "New conversation",
@@ -905,6 +1197,8 @@ export default function Home() {
 
   function confirmDeleteConversation() {
     if (!pendingDeleteConversationId) return;
+
+    clearConversationDraft(pendingDeleteConversationId);
 
     setConversations((current) => {
       const remaining = current.filter(
@@ -945,6 +1239,14 @@ export default function Home() {
     updateConversation(activeConversation.id, () => ({ model: nextModel }));
   }
 
+  function selectConversation(nextConversationId) {
+    setPendingAttachments([]);
+    setShowPromptEditor(false);
+    startTransition(() => {
+      setActiveConversationId(nextConversationId);
+    });
+  }
+
   function toggleResearchMode() {
     if (!activeConversation) return;
 
@@ -954,8 +1256,8 @@ export default function Home() {
     setBanner({
       tone: "info",
       message: researchMode
-        ? "Research mode disabled."
-        : "Research mode enabled. Vanta will pull lightweight web context when possible.",
+        ? "Web context turned off. Replies will stay focused on what you provide here."
+        : "Web context turned on. Vanta can now pull outside sources and citations for this conversation.",
     });
   }
 
@@ -1078,55 +1380,69 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#05010b] text-white">
-      <div className="mx-auto max-w-[1420px] px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-6 overflow-hidden rounded-[1.9rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015))] p-6 shadow-[0_24px_90px_rgba(0,0,0,0.28)] backdrop-blur-xl sm:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-5 inline-flex items-center gap-3 rounded-[0.95rem] border border-violet-400/15 bg-violet-500/8 px-4 py-2">
-                <span className="h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_16px_#8b5cf6]" />
-                <span className="text-[11px] font-medium uppercase tracking-[0.35em] text-violet-200">
+      <div className="mx-auto max-w-[1380px] px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-6 overflow-hidden rounded-[1.5rem] border border-white/7 bg-[#090410]/90 p-6 shadow-[0_12px_40px_rgba(0,0,0,0.22)] backdrop-blur-xl sm:p-7">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-[640px]">
+              <div className="mb-4 inline-flex items-center gap-3 rounded-[0.8rem] border border-violet-400/12 bg-violet-500/6 px-3.5 py-2">
+                <span className="h-2 w-2 rounded-full bg-violet-400 shadow-[0_0_12px_#8b5cf6]" />
+                <span className="text-[11px] font-medium uppercase tracking-[0.32em] text-violet-200/90">
                   Vanta
                 </span>
               </div>
-              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
+              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-[3.2rem]">
                 Focused AI,
-                <span className="block text-white/50">without the interface noise.</span>
+                <span className="block text-white/42">without the interface noise.</span>
               </h1>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-white/54 sm:text-[15px]">
-                A cleaner AI workspace with saved local history, quick search,
-                screenshots, file drop, and a calmer layout that adapts between phone and desktop.
+              <p className="mt-4 max-w-xl text-sm leading-7 text-white/50 sm:text-[15px]">
+                A minimal purple-on-black workspace for chat, screenshots, files,
+                and local history that stays on this device.
               </p>
+
+              <div className="mt-5 flex flex-wrap gap-2.5">
+                {STARTER_PROMPTS.map((starter) => (
+                  <button
+                    key={starter.title}
+                    onClick={() => setInput(starter.prompt)}
+                    className="rounded-[0.8rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.05] hover:text-white/84"
+                  >
+                    {starter.title}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex flex-col items-start gap-3 lg:items-end">
-              <div className="rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/62">
-                Browser-saved mode
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
-                <MetaCard
-                  label="Model"
-                  value={
-                    MODEL_OPTIONS.find((item) => item.value === activeModel)?.label ||
-                    "Custom"
-                  }
-                />
-                <MetaCard label="Plan" value="Free" />
-                <MetaCard label="Cooldown" value={cooldown > 0 ? `${cooldown}s` : "Ready"} />
-                <MetaCard label="Sync" value={formatSyncStatus(syncStatus)} />
-              </div>
+            <div className="grid gap-3 sm:grid-cols-3 lg:max-w-[520px]">
+              <MetaCard
+                label="Model"
+                value={
+                  MODEL_OPTIONS.find((item) => item.value === activeModel)?.label ||
+                  "Custom"
+                }
+                hint="Switch models per conversation."
+              />
+              <MetaCard
+                label="Privacy"
+                value="This browser only"
+                hint="Chats stay on this device unless you manually export or share one."
+              />
+              <MetaCard
+                label="Requests"
+                value={cooldown > 0 ? `Wait ${cooldown}s` : `${usageCount}/2 used`}
+                hint="The free limit resets every minute."
+              />
             </div>
           </div>
         </header>
 
         {banner && (
           <div
-            className={`mb-4 rounded-[1rem] border px-4 py-3 text-sm ${
+            className={`mb-4 rounded-[0.95rem] border px-4 py-3 text-sm ${
               banner.tone === "error"
-                ? "border-red-400/20 bg-red-500/10 text-red-200"
+                ? "border-red-400/18 bg-red-500/8 text-red-200"
                 : banner.tone === "success"
-                  ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
-                  : "border-violet-400/20 bg-violet-500/10 text-violet-200"
+                  ? "border-emerald-400/18 bg-emerald-500/8 text-emerald-200"
+                  : "border-violet-400/18 bg-violet-500/8 text-violet-200"
             }`}
           >
             {banner.message}
@@ -1134,11 +1450,12 @@ export default function Home() {
         )}
 
         <section className="mb-5 space-y-4 lg:hidden">
-          <div className="grid grid-cols-2 gap-3">
-            <MetaCard label="Model" value={MODEL_OPTIONS.find((item) => item.value === activeModel)?.label || "Custom"} />
-            <MetaCard label="Storage" value="This device" />
-            <MetaCard label="Cooldown" value={cooldown > 0 ? `${cooldown}s` : "Ready"} />
-            <MetaCard label="Sharing" value="Link copy" />
+          <div className="grid gap-3">
+            <MetaCard
+              label="Privacy"
+              value="Browser-saved history"
+              hint="Nothing syncs across devices in local mode."
+            />
           </div>
 
           <Panel>
@@ -1164,76 +1481,44 @@ export default function Home() {
               placeholder="Search this device"
               className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/28"
             />
-            <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
-              {filteredConversations.length === 0 ? (
-                <div className="min-w-full rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
-                  Nothing matches this search yet.
+            <div className="mt-4 space-y-4">
+              {conversationSections.length === 0 ? (
+                <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
+                  {deferredConversationSearch.trim()
+                    ? "Nothing on this device matches that search yet."
+                    : "No conversations yet."}
                 </div>
               ) : (
-                filteredConversations.map((conversation) => (
-                  <div
-                    key={conversation.id}
-                    className={`min-w-[240px] rounded-[1rem] border px-4 py-3 transition ${
-                      conversation.id === activeConversationId
-                        ? "border-violet-400/25 bg-violet-500/8"
-                        : "border-white/6 bg-white/[0.02]"
-                    }`}
-                  >
-                    <button
-                      onClick={() => setActiveConversationId(conversation.id)}
-                      className="w-full text-left"
-                    >
-                      <p className="truncate text-sm font-medium text-white">
-                        {conversation.title}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/40">
-                        <span>
-                          {MODEL_OPTIONS.find((item) => item.value === conversation.model)
-                            ?.label || conversation.model}
-                        </span>
-                        {conversation.researchMode && <span>Research</span>}
-                        {conversation.publicToken && <span>Shared</span>}
-                      </div>
-                    </button>
-                    <div className="mt-3 flex gap-3 text-xs text-white/40">
-                      <button className="transition hover:text-white/75" onClick={() => renameConversation(conversation.id)}>Rename</button>
-                      <button className="transition hover:text-red-200" onClick={() => deleteConversation(conversation.id)}>Delete</button>
-                    </div>
-                  </div>
+                conversationSections.map((section) => (
+                  <ConversationSection
+                    key={section.title}
+                    title={section.title}
+                    description={section.description}
+                    conversations={section.conversations}
+                    activeConversationId={activeConversationId}
+                    onSelect={selectConversation}
+                    onRename={renameConversation}
+                    onDelete={deleteConversation}
+                    mobile
+                  />
                 ))
               )}
             </div>
           </Panel>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Panel>
-              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                Snapshot
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <SidebarCard label="Conversations" value={String(analytics.conversationCount)} />
-                <SidebarCard label="Requests today" value={String(usageDashboard.requestsToday)} />
-                <SidebarCard label="Avg latency" value={usageDashboard.averageLatency ? `${usageDashboard.averageLatency}ms` : "n/a"} />
-                <SidebarCard label="Success" value={`${usageDashboard.successRate}%`} />
-              </div>
-            </Panel>
-
-            <Panel>
-              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                Device mode
-              </p>
-              <div className="mt-4 space-y-3">
-                <SidebarCard label="Storage" value="Saved on this browser" />
-                <SidebarCard label="Sharing" value="Local share links" />
-                <SidebarCard label="Rate limit" value="2 requests per minute" />
-                <SidebarCard label="Favorites" value={String(usageDashboard.favorites)} />
-                <SidebarCard label="Protection" value="Burst + share guards" />
-              </div>
-            </Panel>
-          </div>
+          <Panel>
+            <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
+              Start here
+            </p>
+            <div className="mt-4 space-y-3 text-sm leading-6 text-white/48">
+              <p>Ask a question, paste a screenshot, or drop in a file.</p>
+              <p>Everything stays in this browser unless you explicitly export or share one conversation.</p>
+              <p>Turn on web context only when you want outside sources and citations.</p>
+            </div>
+          </Panel>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-[320px_1fr]">
+        <section className="grid gap-5 lg:grid-cols-[290px_1fr]">
           <aside className="hidden space-y-5 lg:block">
             <Panel>
               <div className="flex items-center justify-between gap-3">
@@ -1250,78 +1535,51 @@ export default function Home() {
               <input
                 value={conversationSearch}
                 onChange={(event) => setConversationSearch(event.target.value)}
-                placeholder="Search conversations"
+                placeholder="Search this browser"
                 className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/28"
               />
-              <div className="mt-4 space-y-2">
-                {filteredConversations.length === 0 && (
+              <div className="mt-4 space-y-4">
+                {conversationSections.length === 0 ? (
                   <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-5 text-sm text-white/40">
-                    Nothing matches this search yet.
+                    {deferredConversationSearch.trim()
+                      ? "Nothing on this device matches that search yet."
+                      : "No conversations yet."}
                   </div>
+                ) : (
+                  conversationSections.map((section) => (
+                    <ConversationSection
+                      key={section.title}
+                      title={section.title}
+                      description={section.description}
+                      conversations={section.conversations}
+                      activeConversationId={activeConversationId}
+                      onSelect={selectConversation}
+                      onRename={renameConversation}
+                      onDelete={deleteConversation}
+                    />
+                  ))
                 )}
-                {filteredConversations.map((conversation) => (
-                  <div
-                    key={conversation.id}
-                    className={`rounded-[1rem] border px-4 py-3 transition ${
-                      conversation.id === activeConversationId
-                        ? "border-violet-400/25 bg-violet-500/8"
-                        : "border-white/6 bg-white/[0.02]"
-                    }`}
-                  >
-                    <button
-                      onClick={() => setActiveConversationId(conversation.id)}
-                      className="w-full text-left"
-                    >
-                      <p className="truncate text-sm font-medium text-white">
-                        {conversation.title}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/40">
-                        <span>
-                          {MODEL_OPTIONS.find((item) => item.value === conversation.model)
-                            ?.label || conversation.model}
-                        </span>
-                        {conversation.researchMode && <span>Research</span>}
-                        {conversation.publicToken && <span>Shared</span>}
-                      </div>
-                    </button>
-                    <div className="mt-3 flex gap-3 text-xs text-white/40">
-                      <button className="transition hover:text-white/75" onClick={() => renameConversation(conversation.id)}>Rename</button>
-                      <button className="transition hover:text-red-200" onClick={() => deleteConversation(conversation.id)}>Delete</button>
-                    </div>
-                  </div>
-                ))}
               </div>
             </Panel>
 
             <Panel>
               <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                Analytics
+                Privacy + behavior
               </p>
-              <div className="mt-4 space-y-3">
-                <SidebarCard label="Conversations" value={String(analytics.conversationCount)} />
-                <SidebarCard label="Total messages" value={String(analytics.totalMessages)} />
-                <SidebarCard label="Requests today" value={String(usageDashboard.requestsToday)} />
-                <SidebarCard label="Avg latency" value={usageDashboard.averageLatency ? `${usageDashboard.averageLatency}ms` : "n/a"} />
-                <SidebarCard label="Success rate" value={`${usageDashboard.successRate}%`} />
-                <SidebarCard label="Rate limited" value={String(usageDashboard.rateLimited)} />
-              </div>
-            </Panel>
-
-            <Panel>
-              <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-white/32">
-                Workspace
-              </p>
-              <div className="mt-4 space-y-3">
-                <SidebarCard label="Input" value="Enter to send" />
-                <SidebarCard label="Voice" value={voiceSupported ? "Ready" : "Not supported"} />
-                <SidebarCard label="Rate limit" value="2 requests per minute" />
-                <SidebarCard label="Storage" value="Saved on this browser" />
-                <SidebarCard label="Sharing" value="Local share links" />
-                <SidebarCard label="Protection" value="Burst + share guards" />
-                <SidebarCard label="Pinned" value={String(usageDashboard.pinned)} />
-                <SidebarCard label="Favorites" value={String(usageDashboard.favorites)} />
-                <SidebarCard label="Feedback" value={`${usageDashboard.likes}/${usageDashboard.dislikes}`} />
-                <SidebarCard label="Sync state" value={formatSyncStatus(syncStatus)} />
+              <div className="mt-4 space-y-4 text-sm leading-6 text-white/44">
+                <p>
+                  <span className="text-white/74">Local history:</span> conversations stay on this
+                  browser unless you export or share one on purpose.
+                </p>
+                <p>
+                  <span className="text-white/74">Web context:</span>{" "}
+                  {researchMode
+                    ? "enabled for this conversation, so Vanta can pull outside sources and citations."
+                    : "off right now, so Vanta stays focused on what you type, paste, or attach."}
+                </p>
+                <p>
+                  <span className="text-white/74">Sharing:</span> export downloads the active chat, and share only includes the conversation you choose.
+                </p>
               </div>
             </Panel>
           </aside>
@@ -1330,7 +1588,7 @@ export default function Home() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            className={`relative rounded-[1.7rem] border bg-[#090410]/84 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.24)] backdrop-blur sm:p-6 ${
+            className={`relative rounded-[1.55rem] border bg-[#090410]/88 p-5 shadow-[0_14px_52px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6 ${
               dragActive ? "border-violet-400/35" : "border-white/8"
             }`}
           >
@@ -1372,7 +1630,6 @@ export default function Home() {
               shareConversation={shareConversation}
               showPromptEditor={showPromptEditor}
               startEditingMessage={startEditingMessage}
-              syncStatus={syncStatus}
               toggleResearchMode={toggleResearchMode}
               toggleMessageFavorite={toggleMessageFavorite}
               toggleMessagePin={toggleMessagePin}
@@ -1471,7 +1728,6 @@ function WorkspaceHeader({
   shareConversation,
   showPromptEditor,
   startEditingMessage,
-  syncStatus,
   toggleResearchMode,
   toggleMessageFavorite,
   toggleMessagePin,
@@ -1487,6 +1743,8 @@ function WorkspaceHeader({
   resetConversation,
   applyPreset,
 }) {
+  const hasUserMessages = messages.some((message) => message.role === "user");
+
   return (
     <>
       <div className="mb-5 flex flex-col gap-4 border-b border-white/8 pb-5">
@@ -1520,7 +1778,7 @@ function WorkspaceHeader({
                   : "border-white/8 bg-white/[0.03] text-white/70 hover:bg-white/[0.06]"
               }`}
             >
-              {researchMode ? "Research on" : "Research off"}
+              {researchMode ? "Web context on" : "Web context off"}
             </button>
             <button
               onClick={shareConversation}
@@ -1555,57 +1813,62 @@ function WorkspaceHeader({
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
-          <div className="flex gap-2 overflow-x-auto pb-1 pr-1 sm:flex-wrap sm:overflow-visible">
-            {PROMPT_PRESETS.map((preset) => (
+        <div className="rounded-[1rem] border border-white/8 bg-white/[0.02] px-4 py-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
+                Guided actions
+              </p>
+              <p className="mt-2 text-sm leading-6 text-white/40">
+                Start faster without adding more UI than you need.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 lg:max-w-[620px] lg:justify-end">
+              {PROMPT_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  onClick={() => applyPreset(preset.value)}
+                  className="rounded-[0.78rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/58 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
+                >
+                  {preset.label}
+                </button>
+              ))}
               <button
-                key={preset.label}
-                onClick={() => applyPreset(preset.value)}
-                className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
+                onClick={() => setShowPromptEditor((current) => !current)}
+                className="rounded-[0.78rem] border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-white/74 transition hover:bg-white/[0.06]"
               >
-                {preset.label}
+                {showPromptEditor ? "Hide instructions" : "Edit instructions"}
               </button>
-            ))}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06]"
-            >
-              Attach files
-            </button>
-            <button
-              onClick={toggleVoiceInput}
-              disabled={!voiceSupported}
-              className="shrink-0 rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2 text-sm text-white/62 transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:text-white/28"
-            >
-              {isListening ? "Stop mic" : "Voice input"}
-            </button>
+            </div>
           </div>
 
-          <div className="rounded-[1.1rem] border border-white/8 bg-white/[0.025] p-4">
-            <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
-              Assistant settings
-            </p>
-            <p className="mt-3 text-sm leading-6 text-white/52">
-              {hasCustomPrompt
-                ? "Custom instructions are active for this conversation."
-                : "Using the default Vanta behavior."}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-white/38">
-              {researchMode
-                ? "Research mode will add lightweight web context and source-friendly structure."
-                : "Enable research mode when you want web context and citations."}
-            </p>
-            <button
-              onClick={() => setShowPromptEditor((current) => !current)}
-              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-white/72 transition hover:bg-white/[0.06]"
-            >
-              {showPromptEditor ? "Hide instructions" : "Edit instructions"}
-            </button>
+          <div className="mt-4 grid gap-3 text-sm leading-6 text-white/40 lg:grid-cols-3">
+            <StatusNote
+              label="History"
+              value="Saved only in this browser. Nothing syncs unless you explicitly turn that on later."
+            />
+            <StatusNote
+              label="Research"
+              value={
+                researchMode
+                  ? "Web context is enabled, so Vanta can pull outside sources for this conversation."
+                  : "Web context is off, so replies use only what you provide here."
+              }
+            />
+            <StatusNote
+              label="Instructions"
+              value={
+                hasCustomPrompt
+                  ? "Custom instructions shape only this conversation."
+                  : "Default Vanta instructions keep replies concise and clear."
+              }
+            />
           </div>
         </div>
 
         {showPromptEditor && (
-          <div className="rounded-[1.1rem] border border-white/8 bg-white/[0.025] p-4">
+          <div className="rounded-[1rem] border border-white/8 bg-white/[0.02] p-4">
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
               Conversation instructions
             </p>
@@ -1619,18 +1882,12 @@ function WorkspaceHeader({
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/42">
-        <span>{usageCount}/2 requests in the last minute</span>
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/34">
+        <span>{usageCount}/2 requests used in the last minute</span>
         <span className="text-white/18">|</span>
-        <span>Shift+Enter for newline</span>
+        <span>Shift+Enter adds a new line</span>
         <span className="text-white/18">|</span>
-        <span>Streaming enabled</span>
-        <span className="text-white/18">|</span>
-        <span>{voiceSupported ? "Voice input ready" : "Voice input unsupported"}</span>
-        <span className="text-white/18">|</span>
-        <span>Admin protections active</span>
-        <span className="text-white/18">|</span>
-        <span>{formatSyncStatus(syncStatus)}</span>
+        <span>{voiceSupported ? "Voice input is available" : "Voice input is unavailable"}</span>
       </div>
 
       {pendingAttachments.length > 0 && (
@@ -1666,7 +1923,45 @@ function WorkspaceHeader({
 
       <div className="h-[500px] overflow-y-auto rounded-[1.45rem] border border-white/8 bg-[#07030d] p-4 sm:h-[580px] sm:p-5">
         <div className="space-y-4">
+          {!hasUserMessages && (
+            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.03] p-5">
+              <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/34">
+                Start here
+              </p>
+              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-white">
+                Use Vanta for one focused task at a time.
+              </h3>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-white/46">
+                Ask a question, drop in a file, or paste a screenshot. Vanta keeps history in this browser
+                only, so the workspace stays private and simple by default.
+              </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {STARTER_PROMPTS.map((starter) => (
+                  <button
+                    key={starter.title}
+                    onClick={() => setInput(starter.prompt)}
+                    className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-4 text-left text-sm leading-6 text-white/68 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <span className="block text-white">{starter.title}</span>
+                    <span className="mt-2 block text-white/46">{starter.hint}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <StatusNote label="Private by default" value="Chats stay on this device unless you export or share one yourself." />
+                <StatusNote label="Web context" value="Leave it off for direct help. Turn it on only when you want outside sources." />
+                <StatusNote label="Input options" value="Type, attach a file, paste a screenshot, or use voice input in the composer below." />
+              </div>
+            </div>
+          )}
+
           {messages.map((message, index) => {
+            if (!hasUserMessages && message.id === DEFAULT_ASSISTANT_MESSAGE.id) {
+              return null;
+            }
+
             const showStreamingDots =
               loading && message.role === "assistant" && !message.content?.trim();
             const isEditing = editingMessageId === message.id;
@@ -1674,14 +1969,15 @@ function WorkspaceHeader({
               message.role === "assistant" &&
               message.id === latestRetryableAssistantId &&
               !showStreamingDots;
+            const assistantContextBadges = getAssistantContextBadges(message);
 
             return (
               <div
                 key={message.id || index}
                 className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
                   message.role === "user"
-                    ? "ml-auto bg-gradient-to-br from-violet-600 via-violet-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(168,85,247,0.22)]"
-                    : "border border-white/6 bg-white/[0.04] text-white"
+                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/92 via-violet-600/82 to-fuchsia-600/72 text-white shadow-[0_10px_24px_rgba(76,29,149,0.18)]"
+                    : "border border-white/6 bg-white/[0.03] text-white"
                 } ${message.pinned ? "ring-1 ring-violet-300/30" : ""} ${
                   message.favorite ? "shadow-[0_12px_32px_rgba(168,85,247,0.14)]" : ""
                 }`}
@@ -1721,6 +2017,18 @@ function WorkspaceHeader({
                     </button>
                   )}
                 </div>
+                {assistantContextBadges.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {assistantContextBadges.map((badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-white/52"
+                      >
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {showStreamingDots ? (
                   <div className="flex items-center gap-3 text-white/72">
                     <div className="flex items-center gap-2">
@@ -1858,7 +2166,7 @@ function WorkspaceHeader({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_176px]">
+      <div className="mt-5 rounded-[1.2rem] border border-violet-400/10 bg-[#090410] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -1866,15 +2174,37 @@ function WorkspaceHeader({
           onPaste={handlePaste}
           rows={3}
           placeholder="Type your message, paste a screenshot, or drag files in..."
-          className="min-h-[108px] resize-none rounded-[1.25rem] border border-white/8 bg-[#07030d] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/30"
+          className="min-h-[118px] w-full resize-none rounded-[1rem] border border-white/8 bg-[#07030d] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/24"
         />
-        <button
-          onClick={sendMessage}
-          disabled={loading || cooldown > 0 || (!input.trim() && pendingAttachments.length === 0)}
-          className="rounded-[1.25rem] bg-gradient-to-br from-violet-500 to-fuchsia-600 px-6 py-4 text-base font-medium text-white shadow-[0_12px_30px_rgba(168,85,247,0.24)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none"
-        >
-          {buttonLabel}
-        </button>
+
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-[0.82rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
+            >
+              Attach files
+            </button>
+            <button
+              onClick={toggleVoiceInput}
+              disabled={!voiceSupported}
+              className="rounded-[0.82rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82 disabled:cursor-not-allowed disabled:text-white/28"
+            >
+              {isListening ? "Stop voice input" : "Voice input"}
+            </button>
+            <span className="text-xs text-white/34">
+              Shift+Enter for a new line. Try /summarize, /rewrite, /debug, or /explain.
+            </span>
+          </div>
+
+          <button
+            onClick={sendMessage}
+            disabled={loading || cooldown > 0 || (!input.trim() && pendingAttachments.length === 0)}
+            className="rounded-[1rem] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-6 py-3.5 text-base font-medium text-white shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none"
+          >
+            {buttonLabel}
+          </button>
+        </div>
       </div>
 
       <input
@@ -1891,30 +2221,116 @@ function WorkspaceHeader({
 
 function Panel({ children }) {
   return (
-    <div className="rounded-[1.6rem] border border-white/8 bg-[#090410]/88 p-5 shadow-[0_14px_48px_rgba(0,0,0,0.22)]">
+    <div className="rounded-[1.45rem] border border-white/8 bg-[#090410]/84 p-5 shadow-[0_10px_34px_rgba(0,0,0,0.18)]">
       {children}
     </div>
   );
 }
 
-function MetaCard({ label, value }) {
+function MetaCard({ label, value, hint }) {
   return (
-    <div className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/70 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
       <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
         {label}
       </p>
       <p className="mt-2 text-sm font-medium text-white/92">{value}</p>
+      {hint && <p className="mt-1 text-xs leading-5 text-white/38">{hint}</p>}
     </div>
   );
 }
 
 function SidebarCard({ label, value }) {
   return (
-    <div className="rounded-[1rem] border border-white/8 bg-[#090410]/72 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/70 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
       <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
         {label}
       </p>
       <p className="mt-2 text-sm text-white/80">{value}</p>
+    </div>
+  );
+}
+
+function StatusNote({ label, value }) {
+  return (
+    <div className="rounded-[0.95rem] border border-white/8 bg-[#090410]/58 px-4 py-3">
+      <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-white/26">
+        {label}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-white/74">{value}</p>
+    </div>
+  );
+}
+
+function ConversationSection({
+  title,
+  description,
+  conversations,
+  activeConversationId,
+  onSelect,
+  onRename,
+  onDelete,
+  mobile = false,
+}) {
+  if (!conversations.length) return null;
+
+  return (
+    <div>
+      <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.24em] text-white/28">
+        {title}
+      </p>
+      {description && (
+        <p className="mb-3 max-w-[26rem] text-xs leading-5 text-white/36">{description}</p>
+      )}
+      <div className={mobile ? "flex gap-3 overflow-x-auto pb-1" : "space-y-2"}>
+        {conversations.map((conversation) => {
+          const modelLabel =
+            MODEL_OPTIONS.find((item) => item.value === conversation.model)?.label ||
+            conversation.model;
+          const preview = getConversationPreview(conversation);
+
+          return (
+            <div
+              key={conversation.id}
+              className={`${mobile ? "min-w-[240px]" : ""} rounded-[1rem] border px-4 py-3 transition ${
+                conversation.id === activeConversationId
+                  ? "border-violet-400/22 bg-violet-500/8"
+                  : "border-white/6 bg-white/[0.02]"
+              }`}
+            >
+              <button onClick={() => onSelect(conversation.id)} className="w-full text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="truncate text-sm font-medium text-white">{conversation.title}</p>
+                  <span className="shrink-0 text-[11px] text-white/28">
+                    {formatConversationUpdatedAt(conversation.updatedAt)}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/42">
+                  {preview}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2 text-xs text-white/40">
+                  <span>{modelLabel}</span>
+                  {conversation.researchMode && <span>Web context</span>}
+                  {conversationHasSavedItems(conversation) && <span>Saved</span>}
+                </div>
+              </button>
+              <div className="mt-3 flex gap-3 text-xs text-white/40">
+                <button
+                  className="transition hover:text-white/75"
+                  onClick={() => onRename(conversation.id)}
+                >
+                  Rename
+                </button>
+                <button
+                  className="transition hover:text-red-200"
+                  onClick={() => onDelete(conversation.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
