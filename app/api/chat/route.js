@@ -26,6 +26,8 @@ const FAST_CONTEXT_MESSAGES = 10;
 const SMART_CONTEXT_MESSAGES = 18;
 const FAST_CONTEXT_CHARS = 6_000;
 const SMART_CONTEXT_CHARS = 18_000;
+const FAST_MAX_TOKENS = 360;
+const SMART_MAX_TOKENS = 1_000;
 const ATTACHMENT_CONTEXT_WINDOW = 4;
 
 function getFastModel() {
@@ -75,11 +77,11 @@ function shouldUseSmartModel(messages, systemPrompt, researchMode) {
     systemPrompt || ""
   );
   const complexSignals =
-    /```|debug|error|stack trace|code|analy[sz]e|explain|reason|compare|solve|proof|essay|strategy|math|screenshot|image|file|attachment|source|citation|research|summarize|rewrite/i;
+    /```|debug|error|stack trace|code|analy[sz]e|reason through|compare|solve|proof|essay|strategy|math|screenshot|image|file|attachment|source|citation|research|calculate|step[- ]by[- ]step/i;
 
   if (researchMode || hasImage || hasCustomSchoolMode) return true;
-  if (hasAttachment && latestText.length > 80) return true;
-  if (latestText.length > 420 || allText.length > 4_000) return true;
+  if (hasAttachment && latestText.length > 120) return true;
+  if (latestText.length > 700 || allText.length > 8_000) return true;
   return complexSignals.test(latestText);
 }
 
@@ -156,6 +158,14 @@ function selectContextMessages(messages, useSmartContext) {
   }
 
   return selected.length > 0 ? selected : messages.slice(-1);
+}
+
+function buildSpeedInstruction(useSmartContext) {
+  if (useSmartContext) {
+    return "Response style: start with the answer quickly, then add concise reasoning. Do not over-explain unless the user asks for depth.";
+  }
+
+  return "Response style: answer immediately and briefly. Use 2-5 concise sentences by default. If the task needs depth, say the quick answer first and invite the user to ask for more.";
 }
 
 function sanitizeAttachments(attachments = []) {
@@ -303,11 +313,13 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
     contextMessageCount: contextMessages.length,
     researchResults,
     requestBody: {
+      max_tokens: modelRoute.useSmartContext ? SMART_MAX_TOKENS : FAST_MAX_TOKENS,
       messages: [
         {
           role: "system",
           content: [
             systemPrompt || DEFAULT_SYSTEM_PROMPT,
+            buildSpeedInstruction(modelRoute.useSmartContext),
             researchMode ? RESEARCH_PROMPT : null,
             researchContext,
           ]
@@ -333,6 +345,16 @@ async function runCompletion({ primaryModel, fallbackModel, requestBody, stream 
     const isRateLimited =
       error?.status === 429 || error?.code === "rate_limit_exceeded";
 
+    if (isUnsupportedLimitError(error)) {
+      const completion = await client.chat.completions.create({
+        model: primaryModel,
+        stream,
+        ...withoutGenerationLimits(requestBody),
+      });
+
+      return { completion, modelUsed: primaryModel, usedFallback: false };
+    }
+
     if (!fallbackModel || !isRateLimited || fallbackModel === primaryModel) {
       throw error;
     }
@@ -355,6 +377,21 @@ function buildModelHeaders(config, completionResult) {
       : config.modelStrategy,
     "X-Vanta-Context-Messages": String(config.contextMessageCount),
   };
+}
+
+function withoutGenerationLimits(requestBody) {
+  const { max_tokens: _maxTokens, ...rest } = requestBody;
+  return rest;
+}
+
+function isUnsupportedLimitError(error) {
+  const message = String(error?.message || "");
+  return (
+    error?.status === 400 &&
+    /max_tokens|max_completion_tokens|unsupported parameter|unrecognized request argument/i.test(
+      message
+    )
+  );
 }
 
 function buildErrorResponse(error) {
@@ -395,13 +432,24 @@ export async function POST(req) {
     if (rateLimitError) return respond(rateLimitError);
 
     const contentType = req.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
+    const acceptsJson = contentType.includes("application/json");
+    const acceptsText = contentType.includes("text/plain");
+
+    if (!acceptsJson && !acceptsText) {
       return respond(
-        jsonNoStore({ error: "Content-Type must be application/json." }, { status: 415 })
+        jsonNoStore(
+          { error: "Content-Type must be application/json or text/plain." },
+          { status: 415 }
+        )
       );
     }
 
-    const body = await req.json();
+    let body;
+    try {
+      body = acceptsJson ? await req.json() : JSON.parse(await req.text());
+    } catch {
+      return respond(jsonNoStore({ error: "Request body is invalid JSON." }, { status: 400 }));
+    }
     const {
       messages,
       model: selectedModel,

@@ -1039,7 +1039,7 @@ export default function Home() {
     try {
       const response = await fetch(getApiUrl("/api/chat"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
           messages: apiMessages,
           model: conversationSnapshot.model,
