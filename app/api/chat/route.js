@@ -26,8 +26,11 @@ const FAST_CONTEXT_MESSAGES = 10;
 const SMART_CONTEXT_MESSAGES = 18;
 const FAST_CONTEXT_CHARS = 6_000;
 const SMART_CONTEXT_CHARS = 18_000;
+const VISION_CONTEXT_MESSAGES = 6;
+const VISION_CONTEXT_CHARS = 6_000;
 const FAST_MAX_TOKENS = 360;
 const SMART_MAX_TOKENS = 1_000;
+const VISION_MAX_TOKENS = 650;
 const ATTACHMENT_CONTEXT_WINDOW = 4;
 const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 10;
 
@@ -115,6 +118,9 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
       primaryModel: smartModel,
       modelStrategy: "vision",
       useSmartContext: true,
+      contextMessageLimit: VISION_CONTEXT_MESSAGES,
+      contextCharLimit: VISION_CONTEXT_CHARS,
+      maxTokens: VISION_MAX_TOKENS,
       requiresVision: true,
     };
   }
@@ -124,6 +130,7 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
       primaryModel: smartModel,
       modelStrategy: "smart",
       useSmartContext: true,
+      maxTokens: SMART_MAX_TOKENS,
       requiresVision: false,
     };
   }
@@ -133,6 +140,7 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
       primaryModel: selectedModel,
       modelStrategy: selectedModel === fastModel ? "fast" : "custom",
       useSmartContext: selectedModel !== fastModel,
+      maxTokens: selectedModel === fastModel ? FAST_MAX_TOKENS : SMART_MAX_TOKENS,
       requiresVision: false,
     };
   }
@@ -142,6 +150,7 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
     primaryModel: needsSmart ? smartModel : fastModel,
     modelStrategy: needsSmart ? "auto-smart" : "auto-fast",
     useSmartContext: needsSmart,
+    maxTokens: needsSmart ? SMART_MAX_TOKENS : FAST_MAX_TOKENS,
     requiresVision: false,
   };
 }
@@ -172,9 +181,13 @@ function stripOlderAttachments(message) {
   };
 }
 
-function selectContextMessages(messages, useSmartContext) {
-  const maxMessages = useSmartContext ? SMART_CONTEXT_MESSAGES : FAST_CONTEXT_MESSAGES;
-  const maxChars = useSmartContext ? SMART_CONTEXT_CHARS : FAST_CONTEXT_CHARS;
+function selectContextMessages(messages, route) {
+  const maxMessages =
+    route.contextMessageLimit ||
+    (route.useSmartContext ? SMART_CONTEXT_MESSAGES : FAST_CONTEXT_MESSAGES);
+  const maxChars =
+    route.contextCharLimit ||
+    (route.useSmartContext ? SMART_CONTEXT_CHARS : FAST_CONTEXT_CHARS);
   const selected = [];
   let estimatedChars = 0;
 
@@ -331,14 +344,23 @@ function buildResearchContext(results = []) {
   ].join("\n");
 }
 
+function shouldFetchResearch(researchMode, modelRoute, messages) {
+  if (!researchMode) return false;
+  if (!modelRoute.requiresVision) return true;
+
+  const latestText = getMessageText(getLatestUserMessage(messages));
+  return /web|source|citation|current|recent|latest|news|look up|search/i.test(latestText);
+}
+
 async function buildRequest(messages, selectedModel, systemPrompt, researchMode) {
   const modelRoute = chooseModel(selectedModel, messages, systemPrompt, researchMode);
   const fallbackModel = getFallbackModel(modelRoute.primaryModel, {
     requiresVision: modelRoute.requiresVision,
   });
-  const contextMessages = selectContextMessages(messages, modelRoute.useSmartContext);
-  const researchQuery = researchMode ? getLatestUserQuery(messages) : "";
-  const researchResults = researchMode ? await fetchResearchContext(researchQuery) : [];
+  const contextMessages = selectContextMessages(messages, modelRoute);
+  const useResearch = shouldFetchResearch(researchMode, modelRoute, messages);
+  const researchQuery = useResearch ? getLatestUserQuery(messages) : "";
+  const researchResults = useResearch ? await fetchResearchContext(researchQuery) : [];
   const researchContext = buildResearchContext(researchResults);
 
   return {
@@ -349,14 +371,14 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
     contextMessageCount: contextMessages.length,
     researchResults,
     requestBody: {
-      max_tokens: modelRoute.useSmartContext ? SMART_MAX_TOKENS : FAST_MAX_TOKENS,
+      max_tokens: modelRoute.maxTokens,
       messages: [
         {
           role: "system",
           content: [
             systemPrompt || DEFAULT_SYSTEM_PROMPT,
             buildSpeedInstruction(modelRoute.useSmartContext),
-            researchMode ? RESEARCH_PROMPT : null,
+            useResearch ? RESEARCH_PROMPT : null,
             researchContext,
           ]
             .filter(Boolean)

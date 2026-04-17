@@ -84,7 +84,9 @@ const DEFAULT_ASSISTANT_MESSAGE = {
 };
 const MAX_REQUEST_HISTORY = 120;
 const REQUEST_CONTEXT_MESSAGES = 18;
+const REQUEST_VISION_CONTEXT_MESSAGES = 6;
 const REQUEST_ATTACHMENT_WINDOW = 4;
+const REQUEST_VISION_ATTACHMENT_WINDOW = 2;
 const MAX_IMAGE_DIMENSION = 1400;
 const IMAGE_EXPORT_QUALITY = 0.86;
 const MAX_IMAGE_DATA_CHARS = 1_800_000;
@@ -112,12 +114,25 @@ function getModelDisplayName(model) {
   return MODEL_DISPLAY_NAMES[model] || model || "Auto";
 }
 
+function messageHasImageAttachment(message) {
+  return (message?.attachments || []).some((attachment) => attachment.kind === "image");
+}
+
 function prepareMessagesForRequest(messages) {
-  const recentMessages = messages.slice(-REQUEST_CONTEXT_MESSAGES);
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const hasCurrentImage = messageHasImageAttachment(latestUserMessage);
+  const contextLimit = hasCurrentImage
+    ? REQUEST_VISION_CONTEXT_MESSAGES
+    : REQUEST_CONTEXT_MESSAGES;
+  const attachmentWindow = hasCurrentImage
+    ? REQUEST_VISION_ATTACHMENT_WINDOW
+    : REQUEST_ATTACHMENT_WINDOW;
+  const recentMessages = messages.slice(-contextLimit);
 
   return recentMessages.map((message, index) => {
-    const keepAttachments =
-      recentMessages.length - index <= REQUEST_ATTACHMENT_WINDOW;
+    const keepAttachments = recentMessages.length - index <= attachmentWindow;
 
     if (keepAttachments || !message.attachments?.length) return message;
 
