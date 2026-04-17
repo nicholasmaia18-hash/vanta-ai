@@ -29,6 +29,19 @@ const SMART_CONTEXT_CHARS = 18_000;
 const FAST_MAX_TOKENS = 360;
 const SMART_MAX_TOKENS = 1_000;
 const ATTACHMENT_CONTEXT_WINDOW = 4;
+const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 10;
+
+function getProviderCooldownRemaining() {
+  const cooldownUntil = globalThis.__vantaProviderCooldownUntil || 0;
+  return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+}
+
+function rememberProviderCooldown(seconds) {
+  const safeSeconds =
+    Math.max(Number(seconds) || 0, 60) + PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
+  globalThis.__vantaProviderCooldownUntil = Date.now() + safeSeconds * 1000;
+  return safeSeconds;
+}
 
 function getFastModel() {
   return process.env.SHUTTLEAI_FAST_MODEL || FAST_MODEL;
@@ -378,7 +391,7 @@ async function runCompletion({ primaryModel, fallbackModel, requestBody, stream 
       return { completion, modelUsed: primaryModel, usedFallback: false };
     }
 
-    if (!fallbackModel || !isRateLimited || fallbackModel === primaryModel) {
+    if (isRateLimited || !fallbackModel || fallbackModel === primaryModel) {
       throw error;
     }
 
@@ -432,8 +445,10 @@ function buildErrorResponse(error) {
   const retryAfter = retryAfterRaw ? Number(retryAfterRaw) : null;
   const isRateLimited =
     error?.status === 429 || error?.code === "rate_limit_exceeded";
-  const safeRetryAfter = isRateLimited ? Math.max(retryAfter || 0, 60) : retryAfter;
-  const status = error?.status || (retryAfter ? 429 : 500);
+  const safeRetryAfter = isRateLimited
+    ? rememberProviderCooldown(retryAfter || 60)
+    : retryAfter;
+  const status = isRateLimited ? 429 : error?.status || (retryAfter ? 429 : 500);
   const message = isUnsupportedImageError(error)
     ? "This model could not read the image. Vanta now routes screenshots to a vision model automatically, so try sending it again."
     : error.message || "Something went wrong";
@@ -443,6 +458,7 @@ function buildErrorResponse(error) {
       error: message,
       retryAfter: safeRetryAfter,
       isRateLimited,
+      providerRateLimited: isRateLimited,
     },
     { status }
   );
@@ -458,6 +474,21 @@ export async function POST(req) {
   try {
     const originError = validateRequestOrigin(req);
     if (originError) return respond(originError);
+
+    const providerCooldown = getProviderCooldownRemaining();
+    if (providerCooldown > 0) {
+      return respond(
+        jsonNoStore(
+          {
+            error: `ShuttleAI is cooling down. Wait ${providerCooldown} seconds before sending another message.`,
+            retryAfter: providerCooldown,
+            isRateLimited: true,
+            providerRateLimited: true,
+          },
+          { status: 429 }
+        )
+      );
+    }
 
     const rateLimitError = enforceApiRateLimit(req, "chat-write");
     if (rateLimitError) return respond(rateLimitError);
@@ -489,7 +520,6 @@ export async function POST(req) {
       researchMode,
     } = validateChatPayload(body);
     const systemPrompt = validatedPrompt || DEFAULT_SYSTEM_PROMPT;
-
     const config = await buildRequest(
       messages,
       selectedModel,

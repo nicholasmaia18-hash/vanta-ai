@@ -15,6 +15,7 @@ import { mergeConversations, sortConversations } from "./lib/supabase";
 
 const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
 const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
+const MIN_PROVIDER_COOLDOWN_SECONDS = 70;
 const AUTO_MODEL = "vanta/auto";
 const SMART_MODEL = "vanta/smart";
 const FAST_MODEL = "openai/gpt-oss-120b";
@@ -1126,9 +1127,13 @@ export default function Home() {
         let errorMessage = data.error || "Request failed.";
 
         if (data.isRateLimited && data.retryAfter) {
-          const seconds = Number(data.retryAfter) || 0;
+          const seconds = data.providerRateLimited
+            ? Math.max(Number(data.retryAfter) || 0, MIN_PROVIDER_COOLDOWN_SECONDS)
+            : Number(data.retryAfter) || 0;
           setCooldown(seconds);
-          errorMessage = `Rate limit reached on the free plan. Wait about ${seconds} seconds, then try one message again.`;
+          errorMessage = data.providerRateLimited
+            ? `ShuttleAI is cooling down. Wait ${seconds} seconds, then press Retry once.`
+            : data.error || `Retry in ${seconds} seconds.`;
         } else if (data.retryAfter) {
           const seconds = Number(data.retryAfter) || 0;
           setCooldown(seconds);
@@ -1369,7 +1374,6 @@ export default function Home() {
     const newConversation = createConversation(activeModel);
     setInput("");
     setPendingAttachments([]);
-    setCooldown(0);
     setShowPromptEditor(false);
     setShowPresetMenu(false);
     setShowMobileConversations(false);
@@ -1393,7 +1397,6 @@ export default function Home() {
     }));
     setInput("");
     setPendingAttachments([]);
-    setCooldown(0);
     setShowPresetMenu(false);
   }
 
@@ -2300,9 +2303,10 @@ function WorkspaceHeader({
                     {isRetryableAssistant && (
                       <button
                         onClick={regenerateLatestResponse}
-                        className="rounded-[0.75rem] border border-white/8 px-2.5 py-1.5 text-white/58 transition hover:bg-white/[0.06] hover:text-white/78"
+                        disabled={loading || cooldown > 0}
+                        className="rounded-[0.75rem] border border-white/8 px-2.5 py-1.5 text-white/58 transition hover:bg-white/[0.06] hover:text-white/78 disabled:cursor-not-allowed disabled:text-white/28"
                       >
-                        Retry
+                        {cooldown > 0 ? `Wait ${cooldown}s` : "Retry"}
                       </button>
                     )}
                     <button
