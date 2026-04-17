@@ -15,10 +15,20 @@ import { mergeConversations, sortConversations } from "./lib/supabase";
 
 const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
 const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
+const AUTO_MODEL = "vanta/auto";
+const SMART_MODEL = "vanta/smart";
+const FAST_MODEL = "openai/gpt-oss-120b";
 const MODEL_OPTIONS = [
-  { label: "GPT-5.4 · best", value: "openai/gpt-5.4" },
-  { label: "GPT-OSS 120B · faster", value: "openai/gpt-oss-120b" },
+  { label: "Auto · fast + smart", value: AUTO_MODEL },
+  { label: "GPT-5.4 · deepest", value: SMART_MODEL },
+  { label: "GPT-OSS 120B · fastest", value: FAST_MODEL },
 ];
+const MODEL_DISPLAY_NAMES = {
+  [AUTO_MODEL]: "Auto",
+  [SMART_MODEL]: "GPT-5.4",
+  [FAST_MODEL]: "GPT-OSS 120B",
+  "openai/gpt-5.4": "GPT-5.4",
+};
 const PROMPT_PRESETS = [
   { label: "Explain", value: "Explain this clearly in simple terms:" },
   { label: "Summarize", value: "Summarize this into the key points:" },
@@ -72,6 +82,8 @@ const DEFAULT_ASSISTANT_MESSAGE = {
     "Vanta is online. Ask a question to begin.\n\nI can also help with:\n- research mode with web context\n- pasted screenshots and images\n- files, code, and quick exports",
 };
 const MAX_REQUEST_HISTORY = 120;
+const REQUEST_CONTEXT_MESSAGES = 18;
+const REQUEST_ATTACHMENT_WINDOW = 4;
 
 function getApiUrl(path) {
   const configuredOrigin = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/, "");
@@ -85,6 +97,44 @@ function getApiUrl(path) {
   }
 
   return path;
+}
+
+function normalizeModelValue(model) {
+  if (!model || model === "openai/gpt-5.4") return AUTO_MODEL;
+  return model;
+}
+
+function getModelDisplayName(model) {
+  return MODEL_DISPLAY_NAMES[model] || model || "Auto";
+}
+
+function prepareMessagesForRequest(messages) {
+  const recentMessages = messages.slice(-REQUEST_CONTEXT_MESSAGES);
+
+  return recentMessages.map((message, index) => {
+    const keepAttachments =
+      recentMessages.length - index <= REQUEST_ATTACHMENT_WINDOW;
+
+    if (keepAttachments || !message.attachments?.length) return message;
+
+    const attachmentNames = message.attachments
+      .map((attachment) => attachment.name)
+      .filter(Boolean)
+      .join(", ");
+
+    return {
+      ...message,
+      attachments: [],
+      content: [
+        message.content,
+        attachmentNames
+          ? `[Older attachments omitted for faster responses: ${attachmentNames}]`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    };
+  });
 }
 
 function createConversation(model = MODEL_OPTIONS[0].value) {
@@ -127,6 +177,7 @@ function getLatestRetryContext(messages = []) {
 function normalizeConversation(conversation) {
   return {
     ...conversation,
+    model: normalizeModelValue(conversation.model),
     researchMode: Boolean(conversation.researchMode),
     systemPrompt: conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT,
     messages:
@@ -326,7 +377,11 @@ function getAssistantContextBadges(message) {
   if (message.role !== "assistant" || !message.requestContext) return [];
 
   const badges = [];
+  if (message.requestContext.modelLabel) badges.push(message.requestContext.modelLabel);
   if (message.requestContext.researchEnabled) badges.push("Web context enabled");
+  if (message.requestContext.contextMessageCount > 0) {
+    badges.push(`${message.requestContext.contextMessageCount} messages used`);
+  }
   if (message.requestContext.attachmentCount > 0) {
     badges.push(
       `${message.requestContext.attachmentCount} attachment${
@@ -956,11 +1011,14 @@ export default function Home() {
     nextTitle,
   }) {
     const streamingMessageId = crypto.randomUUID();
+    const apiMessages = prepareMessagesForRequest(requestMessages);
     const requestContext = {
       researchEnabled: Boolean(conversationSnapshot.researchMode),
       attachmentCount:
         requestMessages[requestMessages.length - 1]?.attachments?.length || 0,
       customInstructions: conversationHasCustomInstructions(conversationSnapshot),
+      modelLabel: getModelDisplayName(conversationSnapshot.model),
+      contextMessageCount: apiMessages.length,
     };
     const assistantPlaceholder = {
       id: streamingMessageId,
@@ -983,7 +1041,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: requestMessages,
+          messages: apiMessages,
           model: conversationSnapshot.model,
           systemPrompt: conversationSnapshot.systemPrompt,
           researchMode: conversationSnapshot.researchMode,
@@ -1032,14 +1090,48 @@ export default function Home() {
         [...current, Date.now()].filter((timestamp) => Date.now() - timestamp < 60000)
       );
 
+      const routedModel = response.headers.get("x-vanta-model");
+      const routedStrategy = response.headers.get("x-vanta-model-strategy");
+      const contextMessageCount = Number(
+        response.headers.get("x-vanta-context-messages") || apiMessages.length
+      );
+      if (routedModel || routedStrategy) {
+        const routedLabel =
+          routedStrategy === "auto-fast"
+            ? "Auto: fast model"
+            : routedStrategy === "auto-smart"
+              ? "Auto: smart model"
+              : routedStrategy === "fallback"
+                ? `Fallback: ${getModelDisplayName(routedModel)}`
+                : getModelDisplayName(routedModel || conversationSnapshot.model);
+
+        updateConversation(conversationSnapshot.id, (conversation) => ({
+          messages: conversation.messages.map((message) =>
+            message.id === streamingMessageId
+              ? {
+                  ...message,
+                  requestContext: {
+                    ...message.requestContext,
+                    modelLabel: routedLabel,
+                    contextMessageCount,
+                  },
+                }
+              : message
+          ),
+        }));
+      }
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let streamedText = "";
+      let lastRenderAt = 0;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         streamedText += decoder.decode(value, { stream: true });
+        if (Date.now() - lastRenderAt < 60) continue;
+        lastRenderAt = Date.now();
         updateConversation(conversationSnapshot.id, (conversation) => ({
           messages: conversation.messages.map((message) =>
             message.id === streamingMessageId

@@ -18,6 +18,145 @@ const DEFAULT_SYSTEM_PROMPT =
 
 const RESEARCH_PROMPT =
   "Research mode is enabled. Use the provided search context when available, cite sources inline with markdown links, separate confirmed facts from uncertainty, and say plainly when the search context is thin or inconclusive.";
+const AUTO_MODEL = "vanta/auto";
+const SMART_MODEL_ALIAS = "vanta/smart";
+const FAST_MODEL = "openai/gpt-oss-120b";
+const SMART_MODEL = "openai/gpt-5.4";
+const FAST_CONTEXT_MESSAGES = 10;
+const SMART_CONTEXT_MESSAGES = 18;
+const FAST_CONTEXT_CHARS = 6_000;
+const SMART_CONTEXT_CHARS = 18_000;
+const ATTACHMENT_CONTEXT_WINDOW = 4;
+
+function getFastModel() {
+  return process.env.SHUTTLEAI_FAST_MODEL || FAST_MODEL;
+}
+
+function getSmartModel() {
+  return process.env.SHUTTLEAI_SMART_MODEL || process.env.SHUTTLEAI_MODEL || SMART_MODEL;
+}
+
+function getFallbackModel(primaryModel) {
+  const configuredFallback = process.env.SHUTTLEAI_FALLBACK_MODEL;
+  if (configuredFallback && configuredFallback !== primaryModel) return configuredFallback;
+
+  const fastModel = getFastModel();
+  if (primaryModel !== fastModel) return fastModel;
+
+  const smartModel = getSmartModel();
+  return primaryModel !== smartModel ? smartModel : null;
+}
+
+function getMessageText(message) {
+  return typeof message?.content === "string" ? message.content : "";
+}
+
+function getLatestUserMessage(messages = []) {
+  return [...messages]
+    .reverse()
+    .find((message) => message?.role === "user" && typeof message.content === "string");
+}
+
+function messageHasAttachments(message) {
+  return Array.isArray(message?.attachments) && message.attachments.length > 0;
+}
+
+function messageHasImage(message) {
+  return (message?.attachments || []).some((attachment) => attachment.kind === "image");
+}
+
+function shouldUseSmartModel(messages, systemPrompt, researchMode) {
+  const latestUserMessage = getLatestUserMessage(messages);
+  const latestText = getMessageText(latestUserMessage);
+  const allText = messages.map(getMessageText).join("\n");
+  const hasAttachment = messages.some(messageHasAttachments);
+  const hasImage = messages.some(messageHasImage);
+  const hasCustomSchoolMode = /school support mode|reading plus|i-ready|iready|ixl/i.test(
+    systemPrompt || ""
+  );
+  const complexSignals =
+    /```|debug|error|stack trace|code|analy[sz]e|explain|reason|compare|solve|proof|essay|strategy|math|screenshot|image|file|attachment|source|citation|research|summarize|rewrite/i;
+
+  if (researchMode || hasImage || hasCustomSchoolMode) return true;
+  if (hasAttachment && latestText.length > 80) return true;
+  if (latestText.length > 420 || allText.length > 4_000) return true;
+  return complexSignals.test(latestText);
+}
+
+function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
+  const fastModel = getFastModel();
+  const smartModel = getSmartModel();
+
+  if (selectedModel === SMART_MODEL_ALIAS) {
+    return {
+      primaryModel: smartModel,
+      modelStrategy: "smart",
+      useSmartContext: true,
+    };
+  }
+
+  if (selectedModel && selectedModel !== AUTO_MODEL && selectedModel !== SMART_MODEL) {
+    return {
+      primaryModel: selectedModel,
+      modelStrategy: selectedModel === fastModel ? "fast" : "custom",
+      useSmartContext: selectedModel !== fastModel,
+    };
+  }
+
+  const needsSmart = shouldUseSmartModel(messages, systemPrompt, researchMode);
+  return {
+    primaryModel: needsSmart ? smartModel : fastModel,
+    modelStrategy: needsSmart ? "auto-smart" : "auto-fast",
+    useSmartContext: needsSmart,
+  };
+}
+
+function estimateMessageChars(message) {
+  const attachmentChars = (message.attachments || []).reduce((total, attachment) => {
+    if (attachment.kind === "image") return total + 2_000;
+    return total + Math.min(String(attachment.data || "").length, 4_000);
+  }, 0);
+
+  return getMessageText(message).length + attachmentChars;
+}
+
+function stripOlderAttachments(message) {
+  if (!messageHasAttachments(message)) return message;
+
+  const names = message.attachments
+    .map((attachment) => attachment.name)
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    ...message,
+    attachments: [],
+    content: [message.content, names ? `[Older attachments omitted for speed: ${names}]` : null]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+function selectContextMessages(messages, useSmartContext) {
+  const maxMessages = useSmartContext ? SMART_CONTEXT_MESSAGES : FAST_CONTEXT_MESSAGES;
+  const maxChars = useSmartContext ? SMART_CONTEXT_CHARS : FAST_CONTEXT_CHARS;
+  const selected = [];
+  let estimatedChars = 0;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const keepAttachments = messages.length - index <= ATTACHMENT_CONTEXT_WINDOW;
+    const message = keepAttachments ? messages[index] : stripOlderAttachments(messages[index]);
+    const nextChars = estimateMessageChars(message);
+
+    if (selected.length >= maxMessages) break;
+    if (selected.length >= 4 && estimatedChars + nextChars > maxChars) break;
+
+    selected.unshift(message);
+    estimatedChars += nextChars;
+  }
+
+  return selected.length > 0 ? selected : messages.slice(-1);
+}
 
 function sanitizeAttachments(attachments = []) {
   if (!Array.isArray(attachments) || attachments.length === 0) return [];
@@ -150,16 +289,18 @@ function buildResearchContext(results = []) {
 }
 
 async function buildRequest(messages, selectedModel, systemPrompt, researchMode) {
-  const primaryModel =
-    selectedModel || process.env.SHUTTLEAI_MODEL || "openai/gpt-5.4";
-  const fallbackModel = process.env.SHUTTLEAI_FALLBACK_MODEL || null;
+  const modelRoute = chooseModel(selectedModel, messages, systemPrompt, researchMode);
+  const fallbackModel = getFallbackModel(modelRoute.primaryModel);
+  const contextMessages = selectContextMessages(messages, modelRoute.useSmartContext);
   const researchQuery = researchMode ? getLatestUserQuery(messages) : "";
   const researchResults = researchMode ? await fetchResearchContext(researchQuery) : [];
   const researchContext = buildResearchContext(researchResults);
 
   return {
-    primaryModel,
+    primaryModel: modelRoute.primaryModel,
     fallbackModel,
+    modelStrategy: modelRoute.modelStrategy,
+    contextMessageCount: contextMessages.length,
     researchResults,
     requestBody: {
       messages: [
@@ -173,7 +314,7 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
             .filter(Boolean)
             .join("\n\n"),
         },
-        ...sanitizeMessages(messages),
+        ...sanitizeMessages(contextMessages),
       ],
     },
   };
@@ -181,11 +322,13 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
 
 async function runCompletion({ primaryModel, fallbackModel, requestBody, stream }) {
   try {
-    return await client.chat.completions.create({
+    const completion = await client.chat.completions.create({
       model: primaryModel,
       stream,
       ...requestBody,
     });
+
+    return { completion, modelUsed: primaryModel, usedFallback: false };
   } catch (error) {
     const isRateLimited =
       error?.status === 429 || error?.code === "rate_limit_exceeded";
@@ -194,12 +337,24 @@ async function runCompletion({ primaryModel, fallbackModel, requestBody, stream 
       throw error;
     }
 
-    return client.chat.completions.create({
+    const completion = await client.chat.completions.create({
       model: fallbackModel,
       stream,
       ...requestBody,
     });
+
+    return { completion, modelUsed: fallbackModel, usedFallback: true };
   }
+}
+
+function buildModelHeaders(config, completionResult) {
+  return {
+    "X-Vanta-Model": completionResult.modelUsed,
+    "X-Vanta-Model-Strategy": completionResult.usedFallback
+      ? "fallback"
+      : config.modelStrategy,
+    "X-Vanta-Context-Messages": String(config.contextMessageCount),
+  };
 }
 
 function buildErrorResponse(error) {
@@ -264,10 +419,11 @@ export async function POST(req) {
     );
 
     if (stream) {
-      const completion = await runCompletion({
+      const completionResult = await runCompletion({
         ...config,
         stream: true,
       });
+      const completion = completionResult.completion;
 
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -287,6 +443,7 @@ export async function POST(req) {
       return respond(
         new Response(readable, {
           headers: {
+            ...buildModelHeaders(config, completionResult),
             "Content-Type": "text/plain; charset=utf-8",
             "Cache-Control": "no-cache, no-transform",
           },
@@ -294,15 +451,18 @@ export async function POST(req) {
       );
     }
 
-    const completion = await runCompletion({
+    const completionResult = await runCompletion({
       ...config,
       stream: false,
     });
+    const completion = completionResult.completion;
 
     return respond(
       jsonNoStore({
         reply: completion.choices[0].message.content,
         researchSources: config.researchResults,
+      }, {
+        headers: buildModelHeaders(config, completionResult),
       })
     );
   } catch (error) {

@@ -163,6 +163,10 @@ export function applyCorsHeaders(req, response) {
   if (!origin || !getAllowedOrigins(req).has(origin)) return response;
 
   response.headers.set("Access-Control-Allow-Origin", origin);
+  response.headers.set(
+    "Access-Control-Expose-Headers",
+    "X-Vanta-Model, X-Vanta-Model-Strategy, X-Vanta-Context-Messages"
+  );
   response.headers.append("Vary", "Origin");
   return response;
 }
