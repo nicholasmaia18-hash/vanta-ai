@@ -32,6 +32,7 @@ const FAST_MAX_TOKENS = 360;
 const SMART_MAX_TOKENS = 1_000;
 const VISION_MAX_TOKENS = 650;
 const ATTACHMENT_CONTEXT_WINDOW = 4;
+const PROVIDER_RATE_LIMIT_MIN_SECONDS = 120;
 const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 10;
 
 function getProviderCooldownRemaining() {
@@ -41,7 +42,8 @@ function getProviderCooldownRemaining() {
 
 function rememberProviderCooldown(seconds) {
   const safeSeconds =
-    Math.max(Number(seconds) || 0, 60) + PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
+    Math.max(Number(seconds) || 0, PROVIDER_RATE_LIMIT_MIN_SECONDS) +
+    PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
   globalThis.__vantaProviderCooldownUntil = Date.now() + safeSeconds * 1000;
   return safeSeconds;
 }

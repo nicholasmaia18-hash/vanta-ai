@@ -15,7 +15,7 @@ import { mergeConversations, sortConversations } from "./lib/supabase";
 
 const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
 const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
-const MIN_PROVIDER_COOLDOWN_SECONDS = 70;
+const MIN_PROVIDER_COOLDOWN_SECONDS = 130;
 const AUTO_MODEL = "vanta/auto";
 const SMART_MODEL = "vanta/smart";
 const FAST_MODEL = "openai/gpt-oss-120b";
@@ -478,6 +478,10 @@ function getAssistantContextBadges(message) {
   }
   if (message.requestContext.customInstructions) badges.push("Custom instructions");
   return badges;
+}
+
+function isProviderCooldownMessage(message) {
+  return message?.requestContext?.errorType === "provider_cooldown";
 }
 
 function areDraftAttachmentsEqual(left = [], right = []) {
@@ -1147,7 +1151,7 @@ export default function Home() {
             : Number(data.retryAfter) || 0;
           setCooldown(seconds);
           errorMessage = data.providerRateLimited
-            ? `ShuttleAI is cooling down. Wait ${seconds} seconds, then press Retry once.`
+            ? `ShuttleAI is cooling down. Wait 2 minutes, then press Retry once.`
             : data.error || `Retry in ${seconds} seconds.`;
         } else if (data.retryAfter) {
           const seconds = Number(data.retryAfter) || 0;
@@ -1162,15 +1166,24 @@ export default function Home() {
           model: conversationSnapshot.model,
         });
 
+        const messagesWithoutOldCooldown = data.providerRateLimited
+          ? visibleMessages.filter((message) => !isProviderCooldownMessage(message))
+          : visibleMessages;
+
         updateConversation(conversationSnapshot.id, () => ({
           title: nextTitle,
           messages: [
-            ...visibleMessages,
+            ...messagesWithoutOldCooldown,
             {
               id: crypto.randomUUID(),
               role: "assistant",
               content: errorMessage,
-              requestContext,
+              requestContext: {
+                ...requestContext,
+                errorType: data.providerRateLimited
+                  ? "provider_cooldown"
+                  : "request_error",
+              },
             },
           ],
         }));
