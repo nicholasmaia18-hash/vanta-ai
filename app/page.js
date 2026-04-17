@@ -84,6 +84,9 @@ const DEFAULT_ASSISTANT_MESSAGE = {
 const MAX_REQUEST_HISTORY = 120;
 const REQUEST_CONTEXT_MESSAGES = 18;
 const REQUEST_ATTACHMENT_WINDOW = 4;
+const MAX_IMAGE_DIMENSION = 1400;
+const IMAGE_EXPORT_QUALITY = 0.86;
+const MAX_IMAGE_DATA_CHARS = 1_800_000;
 
 function getApiUrl(path) {
   const configuredOrigin = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/, "");
@@ -224,12 +227,80 @@ async function readFileAttachment(file) {
     else reader.readAsText(file);
   });
 
+  if (isImage) {
+    const optimizedImage = await optimizeImageDataUrl(data);
+
+    return {
+      id: crypto.randomUUID(),
+      name: file.name,
+      mimeType: optimizedImage.mimeType,
+      kind: "image",
+      data: optimizedImage.data,
+    };
+  }
+
   return {
     id: crypto.randomUUID(),
     name: file.name,
     mimeType: file.type || "application/octet-stream",
-    kind: isImage ? "image" : "text",
+    kind: "text",
     data,
+  };
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("This image could not be loaded."));
+    image.src = dataUrl;
+  });
+}
+
+async function optimizeImageDataUrl(dataUrl) {
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) {
+    throw new Error("Screenshot upload failed. Try saving it as PNG or JPG first.");
+  }
+
+  const image = await loadImage(dataUrl);
+  const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+  const scale = longestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / longestSide : 1;
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("This browser could not prepare the image.");
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const exportTypes = ["image/jpeg", "image/png"];
+  let bestData = dataUrl;
+  let bestMimeType = dataUrl.slice(5, dataUrl.indexOf(";")) || "image/png";
+
+  for (const mimeType of exportTypes) {
+    const nextData = canvas.toDataURL(mimeType, IMAGE_EXPORT_QUALITY);
+    if (nextData.length < bestData.length) {
+      bestData = nextData;
+      bestMimeType = mimeType;
+    }
+  }
+
+  if (bestData.length > MAX_IMAGE_DATA_CHARS) {
+    throw new Error(
+      "That screenshot is too large to analyze. Try cropping it to the important part and upload again."
+    );
+  }
+
+  return {
+    data: bestData,
+    mimeType: bestMimeType,
   };
 }
 

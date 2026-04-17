@@ -38,7 +38,14 @@ function getSmartModel() {
   return process.env.SHUTTLEAI_SMART_MODEL || process.env.SHUTTLEAI_MODEL || SMART_MODEL;
 }
 
-function getFallbackModel(primaryModel) {
+function getFallbackModel(primaryModel, { requiresVision = false } = {}) {
+  if (requiresVision) {
+    const configuredVisionFallback = process.env.SHUTTLEAI_VISION_FALLBACK_MODEL;
+    return configuredVisionFallback && configuredVisionFallback !== primaryModel
+      ? configuredVisionFallback
+      : null;
+  }
+
   const configuredFallback = process.env.SHUTTLEAI_FALLBACK_MODEL;
   if (configuredFallback && configuredFallback !== primaryModel) return configuredFallback;
 
@@ -88,12 +95,23 @@ function shouldUseSmartModel(messages, systemPrompt, researchMode) {
 function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
   const fastModel = getFastModel();
   const smartModel = getSmartModel();
+  const hasImage = messages.some(messageHasImage);
+
+  if (hasImage) {
+    return {
+      primaryModel: smartModel,
+      modelStrategy: "vision",
+      useSmartContext: true,
+      requiresVision: true,
+    };
+  }
 
   if (selectedModel === SMART_MODEL_ALIAS) {
     return {
       primaryModel: smartModel,
       modelStrategy: "smart",
       useSmartContext: true,
+      requiresVision: false,
     };
   }
 
@@ -102,6 +120,7 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
       primaryModel: selectedModel,
       modelStrategy: selectedModel === fastModel ? "fast" : "custom",
       useSmartContext: selectedModel !== fastModel,
+      requiresVision: false,
     };
   }
 
@@ -110,6 +129,7 @@ function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
     primaryModel: needsSmart ? smartModel : fastModel,
     modelStrategy: needsSmart ? "auto-smart" : "auto-fast",
     useSmartContext: needsSmart,
+    requiresVision: false,
   };
 }
 
@@ -300,7 +320,9 @@ function buildResearchContext(results = []) {
 
 async function buildRequest(messages, selectedModel, systemPrompt, researchMode) {
   const modelRoute = chooseModel(selectedModel, messages, systemPrompt, researchMode);
-  const fallbackModel = getFallbackModel(modelRoute.primaryModel);
+  const fallbackModel = getFallbackModel(modelRoute.primaryModel, {
+    requiresVision: modelRoute.requiresVision,
+  });
   const contextMessages = selectContextMessages(messages, modelRoute.useSmartContext);
   const researchQuery = researchMode ? getLatestUserQuery(messages) : "";
   const researchResults = researchMode ? await fetchResearchContext(researchQuery) : [];
@@ -310,6 +332,7 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
     primaryModel: modelRoute.primaryModel,
     fallbackModel,
     modelStrategy: modelRoute.modelStrategy,
+    requiresVision: modelRoute.requiresVision,
     contextMessageCount: contextMessages.length,
     researchResults,
     requestBody: {
@@ -394,6 +417,11 @@ function isUnsupportedLimitError(error) {
   );
 }
 
+function isUnsupportedImageError(error) {
+  const message = String(error?.message || "");
+  return /image|vision|multimodal|content part|image_url/i.test(message);
+}
+
 function buildErrorResponse(error) {
   console.error("ShuttleAI error:", error);
 
@@ -406,10 +434,13 @@ function buildErrorResponse(error) {
     error?.status === 429 || error?.code === "rate_limit_exceeded";
   const safeRetryAfter = isRateLimited ? Math.max(retryAfter || 0, 60) : retryAfter;
   const status = error?.status || (retryAfter ? 429 : 500);
+  const message = isUnsupportedImageError(error)
+    ? "This model could not read the image. Vanta now routes screenshots to a vision model automatically, so try sending it again."
+    : error.message || "Something went wrong";
 
   return jsonNoStore(
     {
-      error: error.message || "Something went wrong",
+      error: message,
       retryAfter: safeRetryAfter,
       isRateLimited,
     },
