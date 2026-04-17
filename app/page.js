@@ -41,11 +41,29 @@ const STARTER_PROMPTS = [
     hint: "Break down an interface, error, or visual detail.",
   },
 ];
+const SCHOOL_SUPPORT_OPTIONS = [
+  {
+    title: "Reading check",
+    apps: "Reading Plus, i-Ready Reading, passages",
+    prompt:
+      "I'm working in Reading Plus or i-Ready Reading. I will paste the passage, question, answer choices, and my best answer. Check my reasoning, explain what the question is asking, and show me how to prove the right answer from the text.",
+    guidance:
+      "For reading check mode, help the user verify their reasoning. Ask for the passage, question, choices, and their attempted answer when needed. Explain main idea, author's purpose, vocabulary, evidence, and why choices are stronger or weaker. Do not act like an answer sheet or simply complete graded schoolwork. Focus on proof from the text and learning the pattern.",
+  },
+  {
+    title: "IXL / i-Ready check",
+    apps: "IXL, i-Ready Math, class practice",
+    prompt:
+      "I'm working in IXL or i-Ready Math. I will paste the problem or screenshot and my attempt. Check where I went right or wrong, explain the method, and give me one similar practice problem so I can make sure I understand it.",
+    guidance:
+      "For IXL and i-Ready check mode, review the user's attempt, identify the exact step that needs fixing, teach the method, and offer a similar practice problem. Do not bypass learning platforms, provide answer-sheet style responses, or help the user cheat. Focus on checking work, correcting mistakes, and building mastery.",
+  },
+];
 const SLASH_COMMANDS = Object.fromEntries(
   PROMPT_PRESETS.map((preset) => [preset.label.toLowerCase(), preset.value])
 );
 const DEFAULT_SYSTEM_PROMPT =
-  "You are Vanta, a clear, helpful AI assistant inside a minimalist web app. Keep responses concise but useful. Use short paragraphs by default. Use flat bullet lists only when they genuinely improve clarity. When giving steps, prefer brief numbered lists. If code helps, include small clean code blocks with a short explanation. Avoid filler, hype, and overly casual phrasing.";
+  "You are Vanta, a clear, helpful AI assistant inside a minimalist web app. Keep responses concise but useful. Use short paragraphs by default. Use flat bullet lists only when they genuinely improve clarity. When giving steps, prefer brief numbered lists. If code helps, include small clean code blocks with a short explanation. Avoid filler, hype, and overly casual phrasing. For schoolwork, use a check-my-work approach: help the user verify attempts, understand mistakes, and learn the method rather than acting as an answer sheet.";
 const DEFAULT_ASSISTANT_MESSAGE = {
   id: "default-assistant",
   role: "assistant",
@@ -218,6 +236,10 @@ function conversationHasSavedItems(conversation) {
 function conversationHasCustomInstructions(conversation) {
   return (conversation.systemPrompt || DEFAULT_SYSTEM_PROMPT).trim() !==
     DEFAULT_SYSTEM_PROMPT.trim();
+}
+
+function buildSchoolSupportPrompt(option) {
+  return `${DEFAULT_SYSTEM_PROMPT}\n\nSchool support mode: ${option.guidance}`;
 }
 
 function getConversationPreview(conversation) {
@@ -1289,6 +1311,22 @@ export default function Home() {
     setShowPresetMenu(false);
   }
 
+  function applySchoolSupportOption(option) {
+    setInput(option.prompt);
+    setShowPresetMenu(false);
+
+    if (activeConversation) {
+      updateConversation(activeConversation.id, () => ({
+        systemPrompt: buildSchoolSupportPrompt(option),
+      }));
+    }
+
+    setBanner({
+      tone: "info",
+      message: `${option.title} mode is ready. Paste the question and your attempt so Vanta can check the reasoning.`,
+    });
+  }
+
   function removeAttachment(id) {
     setPendingAttachments((current) =>
       current.filter((attachment) => attachment.id !== id)
@@ -1588,6 +1626,8 @@ export default function Home() {
                 voiceSupported={voiceSupported}
                 resetConversation={resetConversation}
                 applyPreset={applyPreset}
+                applySchoolSupportOption={applySchoolSupportOption}
+                schoolSupportOptions={SCHOOL_SUPPORT_OPTIONS}
                 showPresetMenu={showPresetMenu}
                 setShowPresetMenu={setShowPresetMenu}
                 presetMenuRef={presetMenuRef}
@@ -1690,6 +1730,8 @@ function WorkspaceHeader({
   voiceSupported,
   resetConversation,
   applyPreset,
+  applySchoolSupportOption,
+  schoolSupportOptions,
   showPresetMenu,
   setShowPresetMenu,
   presetMenuRef,
@@ -1886,6 +1928,37 @@ function WorkspaceHeader({
                     <span className="mt-2 block text-white/46">{starter.hint}</span>
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-5 rounded-[1rem] border border-violet-400/12 bg-violet-500/[0.045] p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-violet-100/45">
+                      Check my work
+                    </p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-white/48">
+                      Choose a focused mode for Reading Plus, i-Ready, or IXL.
+                      Vanta can review your attempt, explain the reasoning, and
+                      show how to handle the next one.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {schoolSupportOptions.map((option) => (
+                    <button
+                      key={option.title}
+                      onClick={() => applySchoolSupportOption(option)}
+                      className="rounded-[0.95rem] border border-white/8 bg-[#101117] px-4 py-4 text-left transition hover:border-violet-300/20 hover:bg-violet-500/[0.06]"
+                    >
+                      <span className="block text-sm font-medium text-white">
+                        {option.title}
+                      </span>
+                      <span className="mt-1 block text-xs text-violet-100/45">
+                        {option.apps}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -2147,6 +2220,25 @@ function WorkspaceHeader({
                         </span>
                       </button>
                     ))}
+                  </div>
+                  <div className="mt-2 border-t border-white/8 pt-2">
+                    <p className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-violet-100/38">
+                      Check my work
+                    </p>
+                    <div className="space-y-1">
+                      {schoolSupportOptions.map((option) => (
+                        <button
+                          key={option.title}
+                          onClick={() => applySchoolSupportOption(option)}
+                          className="w-full rounded-[0.8rem] px-3 py-2 text-left text-sm text-white/66 transition hover:bg-violet-500/[0.08] hover:text-white"
+                        >
+                          <span className="block">{option.title}</span>
+                          <span className="mt-0.5 block text-[11px] text-white/28">
+                            {option.apps}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
