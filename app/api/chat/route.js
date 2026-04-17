@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 import {
+  applyCorsHeaders,
+  createCorsPreflightResponse,
   enforceApiRateLimit,
   jsonNoStore,
   validateChatPayload,
@@ -223,17 +225,25 @@ function buildErrorResponse(error) {
   );
 }
 
+export function OPTIONS(req) {
+  return createCorsPreflightResponse(req);
+}
+
 export async function POST(req) {
+  const respond = (response) => applyCorsHeaders(req, response);
+
   try {
     const originError = validateRequestOrigin(req);
-    if (originError) return originError;
+    if (originError) return respond(originError);
 
     const rateLimitError = enforceApiRateLimit(req, "chat-write");
-    if (rateLimitError) return rateLimitError;
+    if (rateLimitError) return respond(rateLimitError);
 
     const contentType = req.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      return jsonNoStore({ error: "Content-Type must be application/json." }, { status: 415 });
+      return respond(
+        jsonNoStore({ error: "Content-Type must be application/json." }, { status: 415 })
+      );
     }
 
     const body = await req.json();
@@ -274,12 +284,14 @@ export async function POST(req) {
         },
       });
 
-      return new Response(readable, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-        },
-      });
+      return respond(
+        new Response(readable, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+          },
+        })
+      );
     }
 
     const completion = await runCompletion({
@@ -287,11 +299,13 @@ export async function POST(req) {
       stream: false,
     });
 
-    return jsonNoStore({
-      reply: completion.choices[0].message.content,
-      researchSources: config.researchResults,
-    });
+    return respond(
+      jsonNoStore({
+        reply: completion.choices[0].message.content,
+        researchSources: config.researchResults,
+      })
+    );
   } catch (error) {
-    return buildErrorResponse(error);
+    return respond(buildErrorResponse(error));
   }
 }

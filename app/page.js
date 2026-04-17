@@ -14,9 +14,10 @@ import { getSyncReadiness } from "./lib/sync-config";
 import { mergeConversations, sortConversations } from "./lib/supabase";
 
 const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
+const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
 const MODEL_OPTIONS = [
-  { label: "GPT-5.4", value: "openai/gpt-5.4" },
-  { label: "GPT-OSS 120B", value: "openai/gpt-oss-120b" },
+  { label: "GPT-5.4 · best", value: "openai/gpt-5.4" },
+  { label: "GPT-OSS 120B · faster", value: "openai/gpt-oss-120b" },
 ];
 const PROMPT_PRESETS = [
   { label: "Explain", value: "Explain this clearly in simple terms:" },
@@ -71,6 +72,20 @@ const DEFAULT_ASSISTANT_MESSAGE = {
     "Vanta is online. Ask a question to begin.\n\nI can also help with:\n- research mode with web context\n- pasted screenshots and images\n- files, code, and quick exports",
 };
 const MAX_REQUEST_HISTORY = 120;
+
+function getApiUrl(path) {
+  const configuredOrigin = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/, "");
+  if (configuredOrigin) return `${configuredOrigin}${path}`;
+
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname.endsWith(".b-cdn.net")
+  ) {
+    return `${CANONICAL_API_ORIGIN}${path}`;
+  }
+
+  return path;
+}
 
 function createConversation(model = MODEL_OPTIONS[0].value) {
   return {
@@ -964,7 +979,7 @@ export default function Home() {
     setBanner(null);
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(getApiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

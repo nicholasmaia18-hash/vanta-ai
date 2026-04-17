@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const DEFAULT_APP_URL = "https://vanta-ai-chat.vercel.app";
+const DEFAULT_BUNNY_URL = "https://vanta-ai.b-cdn.net";
 
 export const LIMITS = {
   attachmentCount: 4,
@@ -41,6 +42,7 @@ function getAllowedOrigins(req) {
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     DEFAULT_APP_URL,
+    DEFAULT_BUNNY_URL,
   ]);
 
   const requestOrigin = getConfiguredOrigin(req.url);
@@ -154,6 +156,31 @@ export function validateRequestOrigin(req) {
     { error: "Untrusted request origin." },
     { status: 403 }
   );
+}
+
+export function applyCorsHeaders(req, response) {
+  const origin = req.headers.get("origin");
+  if (!origin || !getAllowedOrigins(req).has(origin)) return response;
+
+  response.headers.set("Access-Control-Allow-Origin", origin);
+  response.headers.append("Vary", "Origin");
+  return response;
+}
+
+export function createCorsPreflightResponse(req) {
+  const origin = req.headers.get("origin");
+  if (!origin || !getAllowedOrigins(req).has(origin)) {
+    return jsonNoStore({ error: "Untrusted request origin." }, { status: 403 });
+  }
+
+  const headers = new Headers();
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Max-Age", "86400");
+  headers.set("Vary", "Origin");
+
+  return new Response(null, { status: 204, headers });
 }
 
 export function jsonNoStore(data, init = {}) {
