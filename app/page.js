@@ -439,6 +439,7 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
+  const [showMobileConversations, setShowMobileConversations] = useState(false);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -1300,6 +1301,7 @@ export default function Home() {
     setCooldown(0);
     setShowPromptEditor(false);
     setShowPresetMenu(false);
+    setShowMobileConversations(false);
     setConversationSearch("");
     startTransition(() => {
       setConversations((current) => [newConversation, ...current]);
@@ -1389,6 +1391,7 @@ export default function Home() {
     setPendingAttachments([]);
     setShowPromptEditor(false);
     setShowPresetMenu(false);
+    setShowMobileConversations(false);
     startTransition(() => {
       setActiveConversationId(nextConversationId);
     });
@@ -1543,8 +1546,8 @@ export default function Home() {
     cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Send";
 
   return (
-    <main className="min-h-screen bg-[#0b0b0f] text-white">
-      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col lg:flex-row">
+    <main className="h-[100dvh] overflow-hidden bg-[#0b0b0f] text-white lg:h-auto lg:min-h-screen lg:overflow-visible">
+      <div className="mx-auto flex h-full max-w-[1600px] flex-col overflow-hidden lg:min-h-screen lg:flex-row lg:overflow-visible">
         <aside className="hidden w-[300px] shrink-0 border-r border-white/6 bg-[#0f1014] lg:flex lg:flex-col">
           <div className="border-b border-white/6 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
@@ -1606,8 +1609,8 @@ export default function Home() {
           </div>
         </aside>
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="border-b border-white/6 bg-[#0f1014]/92 px-4 py-4 backdrop-blur lg:hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-screen">
+          <header className="shrink-0 border-b border-white/6 bg-[#0f1014]/95 px-3 py-3 backdrop-blur lg:hidden">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/16 bg-violet-500/10 text-sm font-semibold text-violet-100">
@@ -1618,47 +1621,64 @@ export default function Home() {
                   <p className="text-xs text-white/38">Focused AI workspace</p>
                 </div>
               </div>
-              <button
-                onClick={createNewConversation}
-                className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
-              >
-                New
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowMobileConversations((current) => !current)}
+                  className={`rounded-[0.9rem] border px-3 py-2 text-sm transition ${
+                    showMobileConversations
+                      ? "border-violet-300/20 bg-violet-500/12 text-violet-100"
+                      : "border-white/8 bg-white/[0.04] text-white/78 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  Chats
+                </button>
+                <button
+                  onClick={createNewConversation}
+                  className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
+                >
+                  New
+                </button>
+              </div>
             </div>
-            <input
-              value={conversationSearch}
-              onChange={(event) => setConversationSearch(event.target.value)}
-              placeholder="Search conversations"
-              className="mt-4 w-full rounded-[0.95rem] border border-white/8 bg-[#14151b] px-4 py-3 text-sm text-white outline-none placeholder:text-white/24"
-            />
-            <div className="mt-4">
-              {conversationSections.length === 0 ? (
-                <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-4 text-sm text-white/40">
-                  {deferredConversationSearch.trim()
-                    ? "Nothing matches that search yet."
-                    : "No conversations yet."}
+
+            {showMobileConversations && (
+              <div className="mt-3 max-h-[48dvh] overflow-y-auto rounded-[1rem] border border-white/8 bg-[#0b0c11] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+                <input
+                  value={conversationSearch}
+                  onChange={(event) => setConversationSearch(event.target.value)}
+                  placeholder="Search conversations"
+                  className="w-full rounded-[0.95rem] border border-white/8 bg-[#14151b] px-4 py-3 text-base text-white outline-none placeholder:text-white/24"
+                />
+                <div className="mt-4">
+                  {conversationSections.length === 0 ? (
+                    <div className="rounded-[1rem] border border-dashed border-white/10 px-4 py-4 text-sm text-white/40">
+                      {deferredConversationSearch.trim()
+                        ? "Nothing matches that search yet."
+                        : "No conversations yet."}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {conversationSections.map((section) => (
+                        <ConversationSection
+                          key={section.title}
+                          title={section.title}
+                          description={section.description}
+                          conversations={section.conversations}
+                          activeConversationId={activeConversationId}
+                          onSelect={selectConversation}
+                          onRename={renameConversation}
+                          onDelete={deleteConversation}
+                          mobile
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {conversationSections.map((section) => (
-                    <ConversationSection
-                      key={section.title}
-                      title={section.title}
-                      description={section.description}
-                      conversations={section.conversations}
-                      activeConversationId={activeConversationId}
-                      onSelect={selectConversation}
-                      onRename={renameConversation}
-                      onDelete={deleteConversation}
-                      mobile
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </header>
 
-          <div className="flex flex-1 flex-col px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 py-2 sm:px-6 lg:overflow-visible lg:px-8 lg:py-6">
             {banner && (
               <div
                 className={`mb-4 rounded-[0.95rem] border px-4 py-3 text-sm ${
@@ -1677,7 +1697,7 @@ export default function Home() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              className={`relative mx-auto flex w-full max-w-[980px] flex-1 flex-col rounded-[1.55rem] border bg-[#111217]/94 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.24)] sm:p-5 ${
+              className={`relative mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[1.15rem] border bg-[#111217]/94 p-3 shadow-[0_10px_40px_rgba(0,0,0,0.24)] sm:rounded-[1.55rem] sm:p-5 lg:overflow-visible ${
                 dragActive ? "border-violet-400/35" : "border-white/8"
               }`}
             >
@@ -1847,27 +1867,27 @@ function WorkspaceHeader({
 
   return (
     <>
-      <div className="mb-4 border-b border-white/6 pb-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mb-3 shrink-0 border-b border-white/6 pb-3 sm:mb-4 sm:pb-4">
+        <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-white/28">
               Vanta
             </p>
-            <h2 className="mt-2 text-[1.9rem] font-semibold tracking-[-0.04em] text-white">
+            <h2 className="mt-1.5 text-[1.55rem] font-semibold tracking-[-0.04em] text-white sm:mt-2 sm:text-[1.9rem]">
               {activeConversation?.title || "New chat"}
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/42">
+            <p className="mt-1.5 max-w-2xl text-sm leading-6 text-white/42 sm:mt-2">
               {hasUserMessages
                 ? "Continue the thread, switch tools only when needed, and keep the prompt focused on one task at a time."
                 : "Ask a question, drop in a file, or paste a screenshot to start the conversation."}
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 pr-1 lg:max-w-[560px] lg:flex-wrap lg:justify-end lg:overflow-visible">
+          <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 pr-1 sm:mx-0 sm:gap-2.5 lg:max-w-[560px] lg:flex-wrap lg:justify-end lg:overflow-visible">
             <select
               value={activeModel}
               onChange={(event) => changeModel(event.target.value)}
-              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/72 outline-none"
+              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-base text-white/72 outline-none sm:text-sm"
             >
               {MODEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1928,7 +1948,7 @@ function WorkspaceHeader({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/38">
+        <div className="mt-4 hidden flex-wrap items-center gap-x-3 gap-y-2 text-sm text-white/38 sm:flex">
           <InlineStatus
             label="History"
             value="Saved only in this browser."
@@ -1952,7 +1972,7 @@ function WorkspaceHeader({
         </div>
 
         {showPromptEditor && (
-          <div className="mt-4 rounded-[1rem] border border-white/8 bg-[#15161c] p-4">
+          <div className="mt-4 rounded-[1rem] border border-white/8 bg-[#15161c] p-3 sm:p-4">
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/35">
               Conversation instructions
             </p>
@@ -1963,13 +1983,13 @@ function WorkspaceHeader({
               value={activeSystemPrompt}
               onChange={(event) => updateSystemPrompt(event.target.value)}
               rows={5}
-              className="mt-3 w-full resize-none rounded-[1rem] border border-white/10 bg-transparent px-3 py-3 text-sm leading-6 text-white/78 outline-none placeholder:text-white/25"
+              className="mt-3 w-full resize-none rounded-[1rem] border border-white/10 bg-transparent px-3 py-3 text-base leading-6 text-white/78 outline-none placeholder:text-white/25 sm:text-sm"
             />
           </div>
         )}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/32">
+      <div className="mb-3 flex flex-nowrap items-center gap-x-2 overflow-x-auto pb-1 text-xs text-white/32 sm:mb-4 sm:flex-wrap sm:gap-x-3 sm:overflow-visible sm:pb-0">
         <span>{usageCount}/2 requests used in the last minute</span>
         <span className="text-white/18">|</span>
         <span>Shift+Enter adds a new line</span>
@@ -2008,14 +2028,14 @@ function WorkspaceHeader({
         </div>
       )}
 
-      <div className="min-h-[460px] flex-1 overflow-y-auto rounded-[1.35rem] border border-white/6 bg-[#0d0e13] p-4 sm:p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[1.05rem] border border-white/6 bg-[#0d0e13] p-3 sm:rounded-[1.35rem] sm:p-5 lg:min-h-[460px]">
         <div className="space-y-4">
           {!hasUserMessages && (
-            <div className="mx-auto max-w-3xl rounded-[1.2rem] border border-white/6 bg-[#14151b] p-6">
+            <div className="mx-auto max-w-3xl rounded-[1.05rem] border border-white/6 bg-[#14151b] p-4 sm:rounded-[1.2rem] sm:p-6">
               <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/34">
                 Start here
               </p>
-              <h3 className="mt-3 text-[2rem] font-semibold tracking-[-0.04em] text-white">
+              <h3 className="mt-3 text-[1.6rem] font-semibold tracking-[-0.04em] text-white sm:text-[2rem]">
                 How can Vanta help?
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/46">
@@ -2093,7 +2113,7 @@ function WorkspaceHeader({
             return (
               <div
                 key={message.id || index}
-                className={`max-w-[85%] rounded-[1.2rem] px-4 py-3 sm:px-5 sm:py-4 ${
+                className={`max-w-[92%] rounded-[1.05rem] px-4 py-3 sm:max-w-[85%] sm:rounded-[1.2rem] sm:px-5 sm:py-4 ${
                   message.role === "user"
                     ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/88 via-violet-600/76 to-fuchsia-600/62 text-white shadow-[0_10px_24px_rgba(76,29,149,0.16)]"
                     : "border border-white/6 bg-[#15161c] text-white"
@@ -2265,7 +2285,7 @@ function WorkspaceHeader({
           })}
 
           {loading && !hasStreamingPlaceholder && (
-            <div className="max-w-[85%] rounded-[1.2rem] border border-white/6 bg-white/[0.04] px-5 py-4 text-white">
+            <div className="max-w-[92%] rounded-[1.05rem] border border-white/6 bg-white/[0.04] px-4 py-3 text-white sm:max-w-[85%] sm:rounded-[1.2rem] sm:px-5 sm:py-4">
               <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
                 Vanta
               </p>
@@ -2285,7 +2305,7 @@ function WorkspaceHeader({
         </div>
       </div>
 
-      <div className="mt-4 rounded-[1.2rem] border border-white/6 bg-[#101116] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+      <div className="mt-3 shrink-0 rounded-[1rem] border border-white/6 bg-[#101116] p-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.16)] sm:mt-4 sm:rounded-[1.2rem] sm:p-3">
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -2293,7 +2313,7 @@ function WorkspaceHeader({
           onPaste={handlePaste}
           rows={3}
           placeholder="Type your message, paste a screenshot, or drag files in..."
-          className="min-h-[118px] w-full resize-none rounded-[1rem] border border-white/8 bg-[#0c0d12] px-5 py-4 text-white outline-none placeholder:text-white/28 focus:border-violet-400/24"
+          className="min-h-[84px] w-full resize-none rounded-[0.9rem] border border-white/8 bg-[#0c0d12] px-4 py-3 text-base text-white outline-none placeholder:text-white/28 focus:border-violet-400/24 sm:min-h-[118px] sm:rounded-[1rem] sm:px-5 sm:py-4"
         />
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2310,7 +2330,7 @@ function WorkspaceHeader({
                 Quick actions
               </button>
               {showPresetMenu && (
-                <div className="absolute bottom-full left-0 z-20 mb-2 w-[250px] rounded-[1rem] border border-white/8 bg-[#12091d] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.32)]">
+                <div className="absolute bottom-full left-0 z-20 mb-2 w-[min(88vw,280px)] rounded-[1rem] border border-white/8 bg-[#12091d] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.32)] sm:w-[250px]">
                   <p className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-white/30">
                     Insert prompt
                   </p>
@@ -2363,7 +2383,7 @@ function WorkspaceHeader({
             >
               {isListening ? "Stop voice input" : "Voice input"}
             </button>
-            <span className="text-xs text-white/34">
+            <span className="hidden text-xs text-white/34 sm:inline">
               Shift+Enter for a new line. Type a slash command or open Quick actions when you need a starting frame.
             </span>
           </div>
@@ -2371,7 +2391,7 @@ function WorkspaceHeader({
           <button
             onClick={sendMessage}
             disabled={loading || cooldown > 0 || (!input.trim() && pendingAttachments.length === 0)}
-            className="rounded-[1rem] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-6 py-3.5 text-base font-medium text-white shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none"
+            className="w-full rounded-[1rem] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-6 py-3 text-base font-medium text-white shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none sm:w-auto sm:py-3.5"
           >
             {buttonLabel}
           </button>
