@@ -320,6 +320,73 @@ async function optimizeImageDataUrl(dataUrl) {
   };
 }
 
+function waitForVideoFrame(video) {
+  if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeout;
+    const events = ["loadedmetadata", "loadeddata", "canplay"];
+
+    function cleanup() {
+      window.clearTimeout(timeout);
+      events.forEach((eventName) => video.removeEventListener(eventName, handleReady));
+    }
+
+    function handleReady() {
+      if (settled || video.videoWidth <= 0 || video.videoHeight <= 0) return;
+      settled = true;
+      cleanup();
+      resolve();
+    }
+
+    timeout = window.setTimeout(() => {
+      settled = true;
+      cleanup();
+      reject(new Error("Screen sharing is not ready yet. Try again in a second."));
+    }, 3500);
+
+    events.forEach((eventName) => video.addEventListener(eventName, handleReady));
+    if ("requestVideoFrameCallback" in video) {
+      video.requestVideoFrameCallback(handleReady);
+    }
+  });
+}
+
+async function createScreenFrameAttachment(video) {
+  await waitForVideoFrame(video);
+
+  const longestSide = Math.max(video.videoWidth, video.videoHeight);
+  const scale = longestSide > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / longestSide : 1;
+  const width = Math.max(1, Math.round(video.videoWidth * scale));
+  const height = Math.max(1, Math.round(video.videoHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("This browser could not capture the shared screen.");
+  }
+
+  context.drawImage(video, 0, 0, width, height);
+  const data = canvas.toDataURL("image/jpeg", IMAGE_EXPORT_QUALITY);
+
+  if (data.length > MAX_IMAGE_DATA_CHARS) {
+    throw new Error("That screen is too large to analyze. Share a smaller window or tab.");
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    name: "shared-screen.jpg",
+    mimeType: "image/jpeg",
+    kind: "image",
+    data,
+  };
+}
+
 function buildShareUrl(conversation) {
   const payload = btoa(
     encodeURIComponent(
@@ -531,8 +598,13 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [showMobileConversations, setShowMobileConversations] = useState(false);
+  const [screenShareStatus, setScreenShareStatus] = useState("idle");
+  const [showScreenAssistant, setShowScreenAssistant] = useState(false);
+  const [screenPrompt, setScreenPrompt] = useState("");
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const screenVideoRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceBaseInputRef = useRef("");
   const deferredConversationSearch = useDeferredValue(conversationSearch);
@@ -752,6 +824,128 @@ export default function Home() {
       setBanner({ tone: "error", message: error.message || "File upload failed." });
     }
   }
+
+  function stopScreenShare(message = "Screen sharing stopped.") {
+    const stream = screenStreamRef.current;
+    stream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
+    screenStreamRef.current = null;
+
+    if (screenVideoRef.current) {
+      screenVideoRef.current.pause();
+      screenVideoRef.current.srcObject = null;
+    }
+
+    setScreenShareStatus("idle");
+    setShowScreenAssistant(false);
+    setScreenPrompt("");
+    if (message) setBanner({ tone: "info", message });
+  }
+
+  async function startScreenShare() {
+    if (screenShareStatus === "active") {
+      setShowScreenAssistant(true);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setBanner({
+        tone: "error",
+        message: "This browser does not support screen sharing. Try Chrome or Edge on desktop.",
+      });
+      return;
+    }
+
+    setScreenShareStatus("starting");
+    setBanner(null);
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" },
+        audio: false,
+      });
+      const video = screenVideoRef.current;
+
+      screenStreamRef.current = stream;
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => stopScreenShare("Screen sharing stopped.");
+      });
+
+      if (video) {
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+      }
+
+      setScreenShareStatus("active");
+      setShowScreenAssistant(true);
+      setBanner({
+        tone: "info",
+        message: "Screen sharing is active. Ask Vanta about the current screen when you're ready.",
+      });
+    } catch (error) {
+      screenStreamRef.current = null;
+      setScreenShareStatus("idle");
+      setShowScreenAssistant(false);
+      setBanner({
+        tone: "error",
+        message:
+          error?.name === "NotAllowedError"
+            ? "Screen sharing was cancelled."
+            : "Unable to start screen sharing in this browser.",
+      });
+    }
+  }
+
+  async function askAboutSharedScreen() {
+    if (loading || cooldown > 0 || !activeConversation) return;
+
+    const video = screenVideoRef.current;
+    if (screenShareStatus !== "active" || !video) {
+      setBanner({ tone: "error", message: "Start screen sharing before asking about the screen." });
+      return;
+    }
+
+    try {
+      const screenAttachment = await createScreenFrameAttachment(video);
+      const conversationSnapshot = activeConversation;
+      const prompt =
+        normalizeComposerInput(screenPrompt) ||
+        "Look at my current screen and tell me what I should do next.";
+      const userMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: prompt,
+        attachments: [screenAttachment],
+      };
+      const hasMeaningfulTitle =
+        conversationSnapshot.title && conversationSnapshot.title !== "New conversation";
+      const nextTitle = hasMeaningfulTitle
+        ? conversationSnapshot.title
+        : createTitleFromMessage(prompt);
+      const nextMessages = [...conversationSnapshot.messages, userMessage];
+
+      setScreenPrompt("");
+      await requestAssistantReply({
+        conversationSnapshot,
+        requestMessages: nextMessages,
+        visibleMessages: nextMessages,
+        nextTitle,
+      });
+    } catch (error) {
+      setBanner({
+        tone: "error",
+        message: error.message || "Unable to capture the shared screen.",
+      });
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1860,11 +2054,65 @@ export default function Home() {
                 showPresetMenu={showPresetMenu}
                 setShowPresetMenu={setShowPresetMenu}
                 presetMenuRef={presetMenuRef}
+                screenShareStatus={screenShareStatus}
+                startScreenShare={startScreenShare}
+                setShowScreenAssistant={setShowScreenAssistant}
               />
             </section>
           </div>
         </div>
       </div>
+
+      <video
+        ref={screenVideoRef}
+        className="pointer-events-none fixed h-px w-px opacity-0"
+        muted
+        playsInline
+      />
+
+      {showScreenAssistant && (
+        <div className="fixed bottom-4 left-4 right-4 z-40 rounded-[1.15rem] border border-violet-300/18 bg-[#070a13]/96 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-5 sm:top-5 sm:w-[430px]">
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-[0.85rem] border border-white/8 px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/62">
+              Vanta screen
+            </p>
+            <div className="flex items-center gap-2 rounded-full border border-emerald-300/16 bg-emerald-400/8 px-2.5 py-1 text-xs text-emerald-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              Sharing active
+            </div>
+          </div>
+
+          <textarea
+            value={screenPrompt}
+            onChange={(event) => setScreenPrompt(event.target.value)}
+            rows={3}
+            placeholder="Ask about your current screen..."
+            className="min-h-[86px] w-full resize-none rounded-[0.9rem] border border-white/10 bg-[#0d111d] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-violet-300/30"
+          />
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => stopScreenShare("Screen sharing stopped.")}
+              className="rounded-[0.75rem] border border-white/10 px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.06]"
+            >
+              Stop sharing
+            </button>
+            <button
+              onClick={askAboutSharedScreen}
+              disabled={loading || cooldown > 0}
+              className="rounded-[0.75rem] bg-violet-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/32"
+            >
+              {cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Ask"}
+            </button>
+            <button
+              onClick={() => setShowScreenAssistant(false)}
+              className="ml-auto rounded-[0.75rem] border border-white/10 px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {(pendingDeleteConversationId || pendingRenameConversationId) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
@@ -1964,8 +2212,18 @@ function WorkspaceHeader({
   showPresetMenu,
   setShowPresetMenu,
   presetMenuRef,
+  screenShareStatus,
+  startScreenShare,
+  setShowScreenAssistant,
 }) {
   const hasUserMessages = messages.some((message) => message.role === "user");
+  const screenSharingActive = screenShareStatus === "active";
+  const screenShareLabel =
+    screenShareStatus === "starting"
+      ? "Starting..."
+      : screenSharingActive
+        ? "Screen panel"
+        : "Share screen";
 
   return (
     <>
@@ -2473,6 +2731,19 @@ function WorkspaceHeader({
                 </div>
               )}
             </div>
+            <button
+              onClick={() =>
+                screenSharingActive ? setShowScreenAssistant(true) : startScreenShare()
+              }
+              disabled={screenShareStatus === "starting"}
+              className={`rounded-[0.82rem] border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:text-white/28 ${
+                screenSharingActive
+                  ? "border-emerald-300/18 bg-emerald-400/8 text-emerald-100 hover:bg-emerald-400/12"
+                  : "border-white/8 bg-transparent text-white/62 hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
+              }`}
+            >
+              {screenShareLabel}
+            </button>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="rounded-[0.82rem] border border-white/8 bg-transparent px-3 py-2 text-sm text-white/62 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
