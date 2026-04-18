@@ -90,6 +90,8 @@ const REQUEST_VISION_ATTACHMENT_WINDOW = 2;
 const MAX_IMAGE_DIMENSION = 1400;
 const IMAGE_EXPORT_QUALITY = 0.86;
 const MAX_IMAGE_DATA_CHARS = 1_800_000;
+const SCREEN_ASSISTANT_IDLE_TEXT =
+  "Ask about the current screen and Vanta's answer will appear here.";
 
 function getApiUrl(path) {
   const configuredOrigin = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/, "");
@@ -601,6 +603,7 @@ export default function Home() {
   const [screenShareStatus, setScreenShareStatus] = useState("idle");
   const [showScreenAssistant, setShowScreenAssistant] = useState(false);
   const [screenPrompt, setScreenPrompt] = useState("");
+  const [screenAnswer, setScreenAnswer] = useState(SCREEN_ASSISTANT_IDLE_TEXT);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const screenVideoRef = useRef(null);
@@ -841,6 +844,7 @@ export default function Home() {
     setScreenShareStatus("idle");
     setShowScreenAssistant(false);
     setScreenPrompt("");
+    setScreenAnswer(message || SCREEN_ASSISTANT_IDLE_TEXT);
     if (message) setBanner({ tone: "info", message });
   }
 
@@ -880,6 +884,7 @@ export default function Home() {
 
       setScreenShareStatus("active");
       setShowScreenAssistant(true);
+      setScreenAnswer(SCREEN_ASSISTANT_IDLE_TEXT);
       setBanner({
         tone: "info",
         message: "Screen sharing is active. Ask Vanta about the current screen when you're ready.",
@@ -888,6 +893,7 @@ export default function Home() {
       screenStreamRef.current = null;
       setScreenShareStatus("idle");
       setShowScreenAssistant(false);
+      setScreenAnswer("Screen sharing did not start. Try again from Chrome or Edge.");
       setBanner({
         tone: "error",
         message:
@@ -898,7 +904,7 @@ export default function Home() {
     }
   }
 
-  async function askAboutSharedScreen() {
+  async function askAboutSharedScreen(promptOverride) {
     if (loading || cooldown > 0 || !activeConversation) return;
 
     const video = screenVideoRef.current;
@@ -908,10 +914,11 @@ export default function Home() {
     }
 
     try {
+      setScreenAnswer("Capturing your screen...");
       const screenAttachment = await createScreenFrameAttachment(video);
       const conversationSnapshot = activeConversation;
       const prompt =
-        normalizeComposerInput(screenPrompt) ||
+        normalizeComposerInput(promptOverride ?? screenPrompt) ||
         "Look at my current screen and tell me what I should do next.";
       const userMessage = {
         id: crypto.randomUUID(),
@@ -927,16 +934,22 @@ export default function Home() {
       const nextMessages = [...conversationSnapshot.messages, userMessage];
 
       setScreenPrompt("");
+      setScreenAnswer("Vanta is reading the screen...");
       await requestAssistantReply({
         conversationSnapshot,
         requestMessages: nextMessages,
         visibleMessages: nextMessages,
         nextTitle,
+        onStream: (text) => setScreenAnswer(text || "Vanta is reading the screen..."),
+        onDone: (text) => setScreenAnswer(text || "No response returned."),
+        onError: (message) => setScreenAnswer(message || "Unable to answer from the screen."),
       });
     } catch (error) {
+      const message = error.message || "Unable to capture the shared screen.";
+      setScreenAnswer(message);
       setBanner({
         tone: "error",
-        message: error.message || "Unable to capture the shared screen.",
+        message,
       });
     }
   }
@@ -1295,6 +1308,9 @@ export default function Home() {
     requestMessages,
     visibleMessages,
     nextTitle,
+    onStream,
+    onDone,
+    onError,
   }) {
     const streamingMessageId = crypto.randomUUID();
     const apiMessages = prepareMessagesForRequest(requestMessages);
@@ -1381,6 +1397,7 @@ export default function Home() {
             },
           ],
         }));
+        onError?.(errorMessage);
         setBanner({ tone: "error", message: errorMessage });
         return;
       }
@@ -1438,18 +1455,21 @@ export default function Home() {
               : message
           ),
         }));
+        onStream?.(streamedText);
       }
 
+      const finalText = streamedText.trim() || "No response returned.";
       updateConversation(conversationSnapshot.id, (conversation) => ({
         messages: conversation.messages.map((message) =>
           message.id === streamingMessageId
             ? {
                 ...message,
-                content: streamedText.trim() || "No response returned.",
+                content: finalText,
               }
             : message
         ),
       }));
+      onDone?.(finalText);
 
       recordRequest({
         at: Date.now(),
@@ -1477,6 +1497,7 @@ export default function Home() {
         status: "error",
         model: conversationSnapshot.model,
       });
+      onError?.(errorMessage);
       setBanner({ tone: "error", message: errorMessage });
     } finally {
       setLoading(false);
@@ -2089,6 +2110,22 @@ export default function Home() {
             placeholder="Ask about your current screen..."
             className="min-h-[86px] w-full resize-none rounded-[0.9rem] border border-white/10 bg-[#0d111d] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-violet-300/30"
           />
+
+          <div className="mt-3 max-h-56 overflow-y-auto rounded-[0.95rem] border border-white/8 bg-black/20 px-3 py-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/45">
+                Vanta says
+              </p>
+              {loading && (
+                <span className="rounded-full border border-violet-300/16 bg-violet-400/8 px-2 py-1 text-[11px] text-violet-100">
+                  generating
+                </span>
+              )}
+            </div>
+            <p className="whitespace-pre-wrap text-sm leading-6 text-white/82">
+              {screenAnswer}
+            </p>
+          </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
