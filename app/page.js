@@ -110,100 +110,126 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
       body {
         margin: 0;
         min-height: 100vh;
-        background: #030711;
-        color: white;
+        overflow: hidden;
+        background: #020712;
+        color: #f8fbff;
         font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .panel {
         min-height: 100vh;
         padding: 10px;
-        background: #030711;
+        background: linear-gradient(180deg, #040817 0%, #020611 100%);
       }
       .top {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        height: 36px;
         margin-bottom: 8px;
-        padding: 8px 10px;
-        border: 1px solid rgba(96, 165, 250, 0.34);
-        border-radius: 12px;
-        background: rgba(6, 12, 28, 0.92);
+        padding: 0 10px 0 12px;
+        border: 1px solid rgba(84, 153, 255, 0.52);
+        border-radius: 9px;
+        background: rgba(4, 10, 25, 0.96);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
       }
       .brand {
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.28em;
+        font-weight: 800;
+        letter-spacing: 0.24em;
         text-transform: uppercase;
-        color: rgba(255,255,255,0.64);
+        color: #cddcff;
       }
       .status {
-        border: 1px solid rgba(110, 231, 183, 0.26);
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border: 1px solid rgba(86, 246, 177, 0.28);
         border-radius: 999px;
-        padding: 5px 10px;
-        background: rgba(16, 185, 129, 0.1);
-        color: #d1fae5;
+        padding: 3px 10px;
+        background: rgba(8, 62, 56, 0.42);
+        color: #dffff3;
         font-size: 12px;
+        white-space: nowrap;
+        box-shadow: 0 0 18px rgba(34, 197, 94, 0.1);
+      }
+      .status::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #22c55e;
+        box-shadow: 0 0 10px rgba(34, 197, 94, 0.95);
       }
       textarea, .answer {
         width: 100%;
-        border: 1px solid rgba(96, 165, 250, 0.24);
-        border-radius: 14px;
-        background: rgba(8, 13, 28, 0.95);
-        color: white;
+        border: 1px solid rgba(84, 153, 255, 0.48);
+        border-radius: 10px;
+        background: #060c1b;
+        color: #f8fbff;
       }
       textarea {
-        min-height: 80px;
+        min-height: 62px;
+        max-height: 104px;
         resize: vertical;
-        padding: 12px;
+        padding: 11px;
         outline: none;
         font: inherit;
-        font-size: 13px;
+        font-size: 14px;
+        line-height: 1.45;
       }
-      textarea:focus { border-color: rgba(147, 197, 253, 0.56); }
+      textarea::placeholder { color: #8491aa; }
+      textarea:focus {
+        border-color: rgba(118, 174, 255, 0.78);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.14);
+      }
       .answer {
-        min-height: 90px;
-        margin-top: 8px;
-        padding: 10px;
+        min-height: 116px;
+        margin-top: 10px;
+        padding: 10px 11px;
         white-space: pre-wrap;
         font-size: 13px;
         line-height: 1.55;
       }
       .answer[hidden] { display: none; }
       .label {
-        margin-bottom: 6px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.2em;
+        margin-bottom: 7px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
-        color: rgba(255,255,255,0.44);
+        color: #8ea2ca;
       }
       .actions {
         display: flex;
-        flex-wrap: wrap;
+        align-items: center;
         gap: 8px;
-        margin-top: 10px;
+        margin-top: 8px;
       }
       button {
-        border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 10px;
-        background: rgba(255,255,255,0.045);
-        color: rgba(255,255,255,0.8);
-        padding: 8px 10px;
+        border: 1px solid rgba(84, 153, 255, 0.46);
+        border-radius: 8px;
+        background: #050b19;
+        color: #f8fbff;
+        padding: 8px 13px;
         font: inherit;
+        font-size: 14px;
+        font-weight: 650;
         cursor: pointer;
       }
-      button:hover { background: rgba(255,255,255,0.08); }
+      button:hover { background: rgba(84, 153, 255, 0.12); }
       button:disabled {
         cursor: not-allowed;
-        color: rgba(255,255,255,0.34);
-        background: rgba(255,255,255,0.035);
+        color: rgba(248,251,255,0.34);
+        background: rgba(255,255,255,0.045);
+        border-color: rgba(255,255,255,0.08);
       }
       .primary {
-        background: #60a5fa;
+        background: #5f8fff;
         color: white;
-        border-color: rgba(255,255,255,0.16);
+        border-color: #7aa5ff;
       }
+      .primary:hover { background: #75a1ff; }
       .spacer { flex: 1; }
     </style>
   </head>
@@ -261,7 +287,7 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         if (data.source !== SOURCE || data.type !== "state") return;
 
         const active = data.screenShareStatus === "active";
-        statusBox.textContent = active ? "Sharing active" : "Not sharing";
+        statusBox.textContent = active ? "Screen sharing active" : "Not sharing";
         const nextAnswer = data.screenAnswer || idleAnswer;
         answerBox.textContent = nextAnswer;
         answerPanel.hidden = !nextAnswer || nextAnswer === idleAnswer;
@@ -1097,7 +1123,7 @@ export default function Home() {
       popup = window.open(
         "",
         "vanta-screen-assistant",
-        "popup=yes,width=430,height=350,left=80,top=80,toolbar=no,location=no,menubar=no,status=no,scrollbars=no,resizable=yes"
+        "popup=yes,width=430,height=410,left=80,top=80,toolbar=no,location=no,menubar=no,status=no,scrollbars=no,resizable=yes"
       );
     }
 
@@ -2533,14 +2559,14 @@ export default function Home() {
       />
 
       {showScreenAssistant && (
-        <div className="fixed bottom-4 left-4 right-4 z-40 rounded-[1.15rem] border border-violet-300/18 bg-[#070a13]/96 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-5 sm:top-5 sm:w-[430px]">
-          <div className="mb-2 flex items-center justify-between gap-3 rounded-[0.85rem] border border-white/8 px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/62">
+        <div className="fixed bottom-4 left-4 right-4 z-40 min-h-[380px] rounded-[0.95rem] border border-blue-400/30 bg-[#020712]/98 p-2.5 shadow-[0_24px_90px_rgba(0,0,0,0.58)] backdrop-blur-xl sm:bottom-auto sm:left-auto sm:right-5 sm:top-5 sm:w-[430px]">
+          <div className="mb-2 flex h-9 items-center justify-between gap-3 rounded-[0.6rem] border border-blue-400/45 bg-[#040a19] px-3">
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.24em] text-blue-100/85">
               Vanta screen
             </p>
-            <div className="flex items-center gap-2 rounded-full border border-emerald-300/16 bg-emerald-400/8 px-2.5 py-1 text-xs text-emerald-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-              Sharing active
+            <div className="flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/12 px-2.5 py-1 text-xs text-emerald-50 shadow-[0_0_18px_rgba(34,197,94,0.12)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.95)]" />
+              Screen sharing active
             </div>
           </div>
 
@@ -2549,46 +2575,48 @@ export default function Home() {
             onChange={(event) => setScreenPrompt(event.target.value)}
             rows={3}
             placeholder="Ask about your current screen..."
-            className="min-h-[86px] w-full resize-none rounded-[0.9rem] border border-white/10 bg-[#0d111d] px-3 py-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-violet-300/30"
+            className="min-h-[62px] w-full resize-y rounded-[0.65rem] border border-blue-400/40 bg-[#060c1b] px-3 py-2.5 text-sm leading-6 text-white outline-none placeholder:text-[#8491aa] focus:border-blue-300/70 focus:ring-2 focus:ring-blue-500/15"
           />
 
-          <div className="mt-3 max-h-56 overflow-y-auto rounded-[0.95rem] border border-white/8 bg-black/20 px-3 py-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-white/45">
-                Vanta says
+          {screenAnswer && screenAnswer !== SCREEN_ASSISTANT_IDLE_TEXT && (
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-[0.7rem] border border-blue-400/25 bg-[#050b19] px-3 py-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-blue-100/50">
+                  Vanta says
+                </p>
+                {loading && (
+                  <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2 py-1 text-[11px] text-blue-100">
+                    generating
+                  </span>
+                )}
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-6 text-white/84">
+                {screenAnswer}
               </p>
-              {loading && (
-                <span className="rounded-full border border-violet-300/16 bg-violet-400/8 px-2 py-1 text-[11px] text-violet-100">
-                  generating
-                </span>
-              )}
             </div>
-            <p className="whitespace-pre-wrap text-sm leading-6 text-white/82">
-              {screenAnswer}
-            </p>
-          </div>
+          )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex items-center gap-2">
             <button
               onClick={() => stopScreenShare("Screen sharing stopped.")}
-              className="rounded-[0.75rem] border border-white/10 px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.06]"
+              className="rounded-[0.55rem] border border-blue-400/40 bg-[#050b19] px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-400/10"
             >
               Stop sharing
             </button>
             <button
               onClick={() => askAboutSharedScreen()}
               disabled={loading || visionCooldown > 0}
-              className="rounded-[0.75rem] bg-violet-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/32"
+              className="rounded-[0.55rem] border border-blue-300/45 bg-blue-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/[0.07] disabled:text-white/32"
             >
               {visionCooldown > 0
-                ? `Image wait ${visionCooldown}s`
+                ? `Wait ${visionCooldown}s`
                 : loading
                   ? "Working..."
                   : "Ask"}
             </button>
             <button
               onClick={() => setShowScreenAssistant(false)}
-              className="ml-auto rounded-[0.75rem] border border-white/10 px-3 py-2 text-sm text-white/70 transition hover:bg-white/[0.06]"
+              className="ml-auto rounded-[0.55rem] border border-blue-400/40 bg-[#050b19] px-3 py-2 text-sm font-medium text-white/82 transition hover:bg-blue-400/10"
             >
               Close
             </button>
