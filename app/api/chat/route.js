@@ -22,6 +22,7 @@ const AUTO_MODEL = "vanta/auto";
 const SMART_MODEL_ALIAS = "vanta/smart";
 const FAST_MODEL = "openai/gpt-oss-120b";
 const SMART_MODEL = "openai/gpt-5.4";
+const VISION_MODEL = "openai/gpt-5.4";
 const FAST_CONTEXT_MESSAGES = 10;
 const SMART_CONTEXT_MESSAGES = 18;
 const FAST_CONTEXT_CHARS = 6_000;
@@ -32,8 +33,8 @@ const FAST_MAX_TOKENS = 360;
 const SMART_MAX_TOKENS = 1_000;
 const VISION_MAX_TOKENS = 650;
 const ATTACHMENT_CONTEXT_WINDOW = 4;
-const PROVIDER_RATE_LIMIT_MIN_SECONDS = 120;
-const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 10;
+const PROVIDER_RATE_LIMIT_FALLBACK_SECONDS = 60;
+const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 5;
 
 function getProviderCooldownStore() {
   globalThis.__vantaProviderCooldowns ||= {};
@@ -46,9 +47,11 @@ function getProviderCooldownRemaining(key = "text") {
 }
 
 function rememberProviderCooldown(key = "text", seconds) {
+  const retrySeconds = Math.ceil(Number(seconds));
   const safeSeconds =
-    Math.max(Number(seconds) || 0, PROVIDER_RATE_LIMIT_MIN_SECONDS) +
-    PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
+    (Number.isFinite(retrySeconds) && retrySeconds > 0
+      ? retrySeconds
+      : PROVIDER_RATE_LIMIT_FALLBACK_SECONDS) + PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
   getProviderCooldownStore()[key] = Date.now() + safeSeconds * 1000;
   return safeSeconds;
 }
@@ -61,10 +64,28 @@ function getSmartModel() {
   return process.env.SHUTTLEAI_SMART_MODEL || process.env.SHUTTLEAI_MODEL || SMART_MODEL;
 }
 
+function isKnownTextOnlyModel(model = "") {
+  return /gpt-oss/i.test(model);
+}
+
+function getVisionModel() {
+  const configuredModel =
+    process.env.SHUTTLEAI_VISION_MODEL || process.env.SHUTTLEAI_SMART_MODEL;
+
+  return configuredModel && !isKnownTextOnlyModel(configuredModel)
+    ? configuredModel
+    : VISION_MODEL;
+}
+
 function getFallbackModel(primaryModel, { requiresVision = false } = {}) {
   if (requiresVision) {
-    const configuredVisionFallback = process.env.SHUTTLEAI_VISION_FALLBACK_MODEL;
-    return configuredVisionFallback && configuredVisionFallback !== primaryModel
+    const configuredVisionFallback =
+      process.env.SHUTTLEAI_VISION_FALLBACK_MODEL ||
+      (primaryModel !== VISION_MODEL ? VISION_MODEL : null);
+
+    return configuredVisionFallback &&
+      configuredVisionFallback !== primaryModel &&
+      !isKnownTextOnlyModel(configuredVisionFallback)
       ? configuredVisionFallback
       : null;
   }
@@ -118,11 +139,12 @@ function shouldUseSmartModel(messages, systemPrompt, researchMode) {
 function chooseModel(selectedModel, messages, systemPrompt, researchMode) {
   const fastModel = getFastModel();
   const smartModel = getSmartModel();
+  const visionModel = getVisionModel();
   const hasImage = messages.some(messageHasImage);
 
   if (hasImage) {
     return {
-      primaryModel: smartModel,
+      primaryModel: visionModel,
       modelStrategy: "vision",
       useSmartContext: true,
       contextMessageLimit: VISION_CONTEXT_MESSAGES,

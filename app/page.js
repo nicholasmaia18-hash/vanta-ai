@@ -18,7 +18,6 @@ const STORAGE_KEYS = {
   visionCooldownUntil: "vanta_vision_cooldown_until",
 };
 const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
-const MIN_PROVIDER_COOLDOWN_SECONDS = 130;
 const AUTO_MODEL = "vanta/auto";
 const SMART_MODEL = "vanta/smart";
 const FAST_MODEL = "openai/gpt-oss-120b";
@@ -111,16 +110,14 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
       body {
         margin: 0;
         min-height: 100vh;
-        background: #050711;
+        background: #030711;
         color: white;
         font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .panel {
         min-height: 100vh;
         padding: 10px;
-        background:
-          radial-gradient(circle at 16% 0%, rgba(139, 92, 246, 0.22), transparent 30%),
-          linear-gradient(180deg, #080913 0%, #050711 100%);
+        background: #030711;
       }
       .top {
         display: flex;
@@ -129,9 +126,9 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         gap: 12px;
         margin-bottom: 8px;
         padding: 8px 10px;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(96, 165, 250, 0.34);
         border-radius: 12px;
-        background: rgba(255,255,255,0.035);
+        background: rgba(6, 12, 28, 0.92);
       }
       .brand {
         font-size: 11px;
@@ -141,37 +138,38 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         color: rgba(255,255,255,0.64);
       }
       .status {
-        border: 1px solid rgba(110, 231, 183, 0.2);
+        border: 1px solid rgba(110, 231, 183, 0.26);
         border-radius: 999px;
         padding: 5px 10px;
-        background: rgba(16, 185, 129, 0.09);
+        background: rgba(16, 185, 129, 0.1);
         color: #d1fae5;
         font-size: 12px;
       }
       textarea, .answer {
         width: 100%;
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(96, 165, 250, 0.24);
         border-radius: 14px;
-        background: rgba(15, 18, 31, 0.92);
+        background: rgba(8, 13, 28, 0.95);
         color: white;
       }
       textarea {
-        min-height: 74px;
+        min-height: 80px;
         resize: vertical;
-        padding: 10px;
+        padding: 12px;
         outline: none;
         font: inherit;
         font-size: 13px;
       }
-      textarea:focus { border-color: rgba(167, 139, 250, 0.5); }
+      textarea:focus { border-color: rgba(147, 197, 253, 0.56); }
       .answer {
-        min-height: 118px;
+        min-height: 90px;
         margin-top: 8px;
         padding: 10px;
         white-space: pre-wrap;
         font-size: 13px;
         line-height: 1.55;
       }
+      .answer[hidden] { display: none; }
       .label {
         margin-bottom: 6px;
         font-size: 11px;
@@ -202,17 +200,11 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         background: rgba(255,255,255,0.035);
       }
       .primary {
-        background: linear-gradient(135deg, #7c3aed, #c026d3);
+        background: #60a5fa;
         color: white;
         border-color: rgba(255,255,255,0.16);
       }
       .spacer { flex: 1; }
-      .hint {
-        margin-top: 8px;
-        color: rgba(255,255,255,0.38);
-        font-size: 11px;
-        line-height: 1.45;
-      }
     </style>
   </head>
   <body>
@@ -222,7 +214,7 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         <div id="status" class="status">Opening...</div>
       </div>
       <textarea id="prompt" placeholder="Ask about your current screen..."></textarea>
-      <section class="answer">
+      <section id="answer-panel" class="answer" hidden>
         <div class="label">Vanta says</div>
         <div id="answer">Ask about the current screen and Vanta's answer will appear here.</div>
       </section>
@@ -232,15 +224,16 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         <span class="spacer"></span>
         <button id="close">Close</button>
       </div>
-      <p class="hint">Move this window over the page you are viewing. Browsers do not allow Vanta to inject directly into another website.</p>
     </main>
     <script>
       const SOURCE = "${SCREEN_ASSISTANT_MESSAGE_SOURCE}";
       const TRUSTED_ORIGIN = ${trustedOrigin};
       const promptBox = document.getElementById("prompt");
       const answerBox = document.getElementById("answer");
+      const answerPanel = document.getElementById("answer-panel");
       const statusBox = document.getElementById("status");
       const askButton = document.getElementById("ask");
+      const idleAnswer = "Ask about the current screen and Vanta's answer will appear here.";
 
       function send(type, payload = {}) {
         if (!window.opener || window.opener.closed) return;
@@ -269,7 +262,9 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
 
         const active = data.screenShareStatus === "active";
         statusBox.textContent = active ? "Sharing active" : "Not sharing";
-        answerBox.textContent = data.screenAnswer || "Ask about the current screen and Vanta's answer will appear here.";
+        const nextAnswer = data.screenAnswer || idleAnswer;
+        answerBox.textContent = nextAnswer;
+        answerPanel.hidden = !nextAnswer || nextAnswer === idleAnswer;
 
         if (document.activeElement !== promptBox && typeof data.screenPrompt === "string") {
           promptBox.value = data.screenPrompt;
@@ -349,7 +344,7 @@ function prepareMessagesForRequest(messages) {
       ...message,
       attachments: [],
       content: [
-        message.content,
+        getMessageContentText(message),
         attachmentNames
           ? `[Older attachments omitted for faster responses: ${attachmentNames}]`
           : null,
@@ -389,7 +384,7 @@ function getLatestRetryContext(messages = []) {
 
   const requestMessages = messages
     .slice(0, lastUserIndex + 1)
-    .filter((message) => !(message.role === "assistant" && !message.content?.trim()));
+    .filter((message) => !(message.role === "assistant" && !getMessageContentText(message).trim()));
 
   return {
     lastUserIndex,
@@ -662,6 +657,21 @@ function conversationHasCustomInstructions(conversation) {
     DEFAULT_SYSTEM_PROMPT.trim();
 }
 
+function getMessageContentText(message) {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
 function buildSchoolSupportPrompt(option) {
   return `${DEFAULT_SYSTEM_PROMPT}\n\nSchool support mode: ${option.guidance}`;
 }
@@ -672,13 +682,14 @@ function getConversationPreview(conversation) {
     .find(
       (message) =>
         message.id !== DEFAULT_ASSISTANT_MESSAGE.id &&
-        (message.content?.trim() || (message.attachments || []).length > 0)
+        (getMessageContentText(message).trim() || (message.attachments || []).length > 0)
     );
 
   if (!latestMessage) return "No messages yet.";
 
-  if (latestMessage.content?.trim()) {
-    return latestMessage.content.trim().replace(/\s+/g, " ").slice(0, 72);
+  const latestText = getMessageContentText(latestMessage);
+  if (latestText.trim()) {
+    return latestText.trim().replace(/\s+/g, " ").slice(0, 72);
   }
 
   const attachmentCount = latestMessage.attachments?.length || 0;
@@ -698,6 +709,27 @@ function normalizeComposerInput(value) {
   return `${preset}\n\n${remainder}`;
 }
 
+function getRetrySeconds(value, fallback = 0) {
+  const seconds = Math.ceil(Number(value));
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : fallback;
+}
+
+function formatWaitDuration(seconds) {
+  const safeSeconds = Math.max(1, getRetrySeconds(seconds, 1));
+  if (safeSeconds < 60) {
+    return `${safeSeconds} second${safeSeconds === 1 ? "" : "s"}`;
+  }
+
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  const minuteText = `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const secondText = remainder
+    ? ` ${remainder} second${remainder === 1 ? "" : "s"}`
+    : "";
+
+  return `${minuteText}${secondText}`;
+}
+
 function scoreConversationMatch(conversation, query) {
   const normalizedQuery = query.toLowerCase().trim();
   if (!normalizedQuery) return 0;
@@ -705,7 +737,7 @@ function scoreConversationMatch(conversation, query) {
   const title = conversation.title.toLowerCase();
   const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
   const recentMessages = [...conversation.messages].reverse().slice(0, 6);
-  const allContent = [title, ...conversation.messages.map((message) => message.content || "")]
+  const allContent = [title, ...conversation.messages.map(getMessageContentText)]
     .join(" ")
     .toLowerCase();
 
@@ -719,7 +751,7 @@ function scoreConversationMatch(conversation, query) {
 
   tokens.forEach((token) => {
     if (title.includes(token)) score += 18;
-    if (recentMessages.some((message) => (message.content || "").toLowerCase().includes(token))) {
+    if (recentMessages.some((message) => getMessageContentText(message).toLowerCase().includes(token))) {
       score += 12;
     } else if (allContent.includes(token)) {
       score += 6;
@@ -985,7 +1017,7 @@ export default function Home() {
         (message) =>
           message.role === "assistant" &&
           message.id !== DEFAULT_ASSISTANT_MESSAGE.id &&
-          message.content?.trim()
+          getMessageContentText(message).trim()
       );
 
     return latestAssistant?.id || null;
@@ -1065,7 +1097,7 @@ export default function Home() {
       popup = window.open(
         "",
         "vanta-screen-assistant",
-        "popup=yes,width=420,height=440,left=80,top=80,toolbar=no,location=no,menubar=no,status=no,scrollbars=no,resizable=yes"
+        "popup=yes,width=430,height=350,left=80,top=80,toolbar=no,location=no,menubar=no,status=no,scrollbars=no,resizable=yes"
       );
     }
 
@@ -1177,7 +1209,7 @@ export default function Home() {
     if (loading || !activeConversation) return;
 
     if (visionCooldown > 0) {
-      const message = `Image analysis is cooling down for ${visionCooldown} more seconds. Wait for the timer, then ask once.`;
+      const message = `Image analysis is cooling down for ${formatWaitDuration(visionCooldown)}. Wait for the timer, then ask once.`;
       setScreenAnswer(message);
       setBanner({ tone: "info", message });
       return;
@@ -1723,26 +1755,26 @@ export default function Home() {
         const isVisionLimit = Boolean(data.visionRateLimited || requestHasImage);
 
         if (data.isRateLimited && data.retryAfter) {
-          const seconds = data.providerRateLimited
-            ? Math.max(Number(data.retryAfter) || 0, MIN_PROVIDER_COOLDOWN_SECONDS)
-            : Number(data.retryAfter) || 0;
+          const seconds = getRetrySeconds(data.retryAfter);
+          const waitText = formatWaitDuration(seconds);
           if (isVisionLimit) {
             setVisionCooldown(seconds);
-            errorMessage = `Image analysis is cooling down. Wait ${seconds} seconds, then press Retry once. Text-only questions can still work.`;
+            errorMessage = `Image analysis is cooling down. Wait ${waitText}, then press Retry once. Text-only questions can still work.`;
           } else {
             setCooldown(seconds);
             errorMessage = data.providerRateLimited
-              ? `ShuttleAI is cooling down. Wait 2 minutes, then press Retry once.`
-              : data.error || `Retry in ${seconds} seconds.`;
+              ? `ShuttleAI is cooling down. Wait ${waitText}, then press Retry once.`
+              : data.error || `Retry in ${waitText}.`;
           }
         } else if (data.retryAfter) {
-          const seconds = Number(data.retryAfter) || 0;
+          const seconds = getRetrySeconds(data.retryAfter);
+          const waitText = formatWaitDuration(seconds);
           if (isVisionLimit) {
             setVisionCooldown(seconds);
-            errorMessage = `Image analysis is cooling down. Wait ${seconds} seconds, then press Retry once.`;
+            errorMessage = `Image analysis is cooling down. Wait ${waitText}, then press Retry once.`;
           } else {
             setCooldown(seconds);
-            errorMessage = `Retry in ${seconds} seconds.`;
+            errorMessage = `Retry in ${waitText}.`;
           }
         }
 
@@ -1907,7 +1939,7 @@ export default function Home() {
     if (hasPendingImage && visionCooldown > 0) {
       setBanner({
         tone: "info",
-        message: `Image analysis is cooling down for ${visionCooldown} more seconds. You can remove the image and send text-only while you wait.`,
+        message: `Image analysis is cooling down for ${formatWaitDuration(visionCooldown)}. You can remove the image and send text-only while you wait.`,
       });
       return;
     }
@@ -1957,7 +1989,7 @@ export default function Home() {
     if (retryUsesImage && visionCooldown > 0) {
       setBanner({
         tone: "info",
-        message: `Image analysis is cooling down for ${visionCooldown} more seconds. Wait for the timer, then press Retry once.`,
+        message: `Image analysis is cooling down for ${formatWaitDuration(visionCooldown)}. Wait for the timer, then press Retry once.`,
       });
       return;
     }
@@ -1979,7 +2011,7 @@ export default function Home() {
 
   function startEditingMessage(message) {
     setEditingMessageId(message.id);
-    setEditDraft(message.content);
+    setEditDraft(getMessageContentText(message));
   }
 
   function cancelEditingMessage() {
@@ -2162,7 +2194,7 @@ export default function Home() {
 
   async function copyMessage(content, id) {
     try {
-      await navigator.clipboard.writeText(content);
+      await navigator.clipboard.writeText(typeof content === "string" ? content : "");
       setCopiedId(id);
       setBanner({ tone: "success", message: "Message copied." });
     } catch {
@@ -2223,7 +2255,7 @@ export default function Home() {
       const attachments = (message.attachments || []).map(
         (attachment) => `Attachment: ${attachment.name}`
       );
-      return `${speaker}\n${message.content}\n${
+      return `${speaker}\n${getMessageContentText(message)}\n${
         attachments.length ? `${attachments.join("\n")}\n` : ""
       }`;
     });
@@ -2257,7 +2289,7 @@ export default function Home() {
   }
 
   const hasStreamingPlaceholder = messages.some(
-    (message) => message.role === "assistant" && !message.content?.trim()
+    (message) => message.role === "assistant" && !getMessageContentText(message).trim()
   );
   const hasPendingImage = pendingAttachments.some((attachment) => attachment.kind === "image");
   const buttonLabel =
@@ -2927,8 +2959,9 @@ function WorkspaceHeader({
               return null;
             }
 
+            const messageText = getMessageContentText(message);
             const showStreamingDots =
-              loading && message.role === "assistant" && !message.content?.trim();
+              loading && message.role === "assistant" && !messageText.trim();
             const isEditing = editingMessageId === message.id;
             const isRetryableAssistant =
               message.role === "assistant" &&
@@ -2973,9 +3006,9 @@ function WorkspaceHeader({
                       </span>
                     )}
                   </div>
-                  {message.content?.trim() && (
+                  {messageText.trim() && (
                     <button
-                      onClick={() => copyMessage(message.content, message.id || index)}
+                      onClick={() => copyMessage(messageText, message.id || index)}
                       className="text-xs text-white/40 transition hover:text-white/75"
                     >
                       Copy
@@ -3037,7 +3070,7 @@ function WorkspaceHeader({
                   </div>
                 ) : (
                   <MessageBody
-                    content={message.content}
+                    content={messageText}
                     user={message.role === "user"}
                     attachments={message.attachments}
                   />
