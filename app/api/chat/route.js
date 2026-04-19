@@ -445,6 +445,25 @@ function buildModelHeaders(config, completionResult) {
   };
 }
 
+function normalizeModelTextContent(content) {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (typeof part?.text === "string") return part.text;
+        if (typeof part?.content === "string") return part.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("");
+  }
+
+  return String(content);
+}
+
 function withoutGenerationLimits(requestBody) {
   const { max_tokens: _maxTokens, ...rest } = requestBody;
   return rest;
@@ -576,7 +595,9 @@ export async function POST(req) {
         async start(controller) {
           try {
             for await (const chunk of completion) {
-              const text = chunk.choices?.[0]?.delta?.content || "";
+              const text = normalizeModelTextContent(
+                chunk.choices?.[0]?.delta?.content
+              );
               if (text) controller.enqueue(encoder.encode(text));
             }
             controller.close();
@@ -605,7 +626,7 @@ export async function POST(req) {
 
     return respond(
       jsonNoStore({
-        reply: completion.choices[0].message.content,
+        reply: normalizeModelTextContent(completion.choices[0].message.content),
         researchSources: config.researchResults,
       }, {
         headers: buildModelHeaders(config, completionResult),

@@ -93,8 +93,203 @@ const REQUEST_VISION_ATTACHMENT_WINDOW = 2;
 const MAX_IMAGE_DIMENSION = 1400;
 const IMAGE_EXPORT_QUALITY = 0.86;
 const MAX_IMAGE_DATA_CHARS = 1_800_000;
+const SCREEN_ASSISTANT_MESSAGE_SOURCE = "vanta-screen-assistant";
 const SCREEN_ASSISTANT_IDLE_TEXT =
   "Ask about the current screen and Vanta's answer will appear here.";
+
+function getScreenAssistantPopupHtml(openerOrigin = "") {
+  const trustedOrigin = JSON.stringify(openerOrigin);
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vanta Screen</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #050711;
+        color: white;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .panel {
+        min-height: 100vh;
+        padding: 14px;
+        background:
+          radial-gradient(circle at 16% 0%, rgba(139, 92, 246, 0.22), transparent 30%),
+          linear-gradient(180deg, #080913 0%, #050711 100%);
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.035);
+      }
+      .brand {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.64);
+      }
+      .status {
+        border: 1px solid rgba(110, 231, 183, 0.2);
+        border-radius: 999px;
+        padding: 5px 10px;
+        background: rgba(16, 185, 129, 0.09);
+        color: #d1fae5;
+        font-size: 12px;
+      }
+      textarea, .answer {
+        width: 100%;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 14px;
+        background: rgba(15, 18, 31, 0.92);
+        color: white;
+      }
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+        padding: 12px;
+        outline: none;
+        font: inherit;
+        font-size: 14px;
+      }
+      textarea:focus { border-color: rgba(167, 139, 250, 0.5); }
+      .answer {
+        min-height: 150px;
+        margin-top: 10px;
+        padding: 12px;
+        white-space: pre-wrap;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      .label {
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.44);
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button {
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.045);
+        color: rgba(255,255,255,0.8);
+        padding: 10px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { background: rgba(255,255,255,0.08); }
+      button:disabled {
+        cursor: not-allowed;
+        color: rgba(255,255,255,0.34);
+        background: rgba(255,255,255,0.035);
+      }
+      .primary {
+        background: linear-gradient(135deg, #7c3aed, #c026d3);
+        color: white;
+        border-color: rgba(255,255,255,0.16);
+      }
+      .spacer { flex: 1; }
+      .hint {
+        margin-top: 10px;
+        color: rgba(255,255,255,0.38);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <div class="top">
+        <div class="brand">Vanta screen</div>
+        <div id="status" class="status">Opening...</div>
+      </div>
+      <textarea id="prompt" placeholder="Ask about your current screen..."></textarea>
+      <section class="answer">
+        <div class="label">Vanta says</div>
+        <div id="answer">Ask about the current screen and Vanta's answer will appear here.</div>
+      </section>
+      <div class="actions">
+        <button id="stop">Stop sharing</button>
+        <button id="ask" class="primary">Ask</button>
+        <span class="spacer"></span>
+        <button id="close">Close</button>
+      </div>
+      <p class="hint">Move this window over the page you are viewing. Browsers do not allow Vanta to inject directly into another website.</p>
+    </main>
+    <script>
+      const SOURCE = "${SCREEN_ASSISTANT_MESSAGE_SOURCE}";
+      const TRUSTED_ORIGIN = ${trustedOrigin};
+      const promptBox = document.getElementById("prompt");
+      const answerBox = document.getElementById("answer");
+      const statusBox = document.getElementById("status");
+      const askButton = document.getElementById("ask");
+
+      function send(type, payload = {}) {
+        if (!window.opener || window.opener.closed) return;
+        window.opener.postMessage({ source: SOURCE, type, ...payload }, TRUSTED_ORIGIN || "*");
+      }
+
+      document.getElementById("ask").addEventListener("click", () => {
+        send("ask", { prompt: promptBox.value });
+      });
+      document.getElementById("stop").addEventListener("click", () => send("stop"));
+      document.getElementById("close").addEventListener("click", () => {
+        send("close");
+        window.close();
+      });
+      promptBox.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          send("ask", { prompt: promptBox.value });
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        if (TRUSTED_ORIGIN && event.origin !== TRUSTED_ORIGIN) return;
+        const data = event.data || {};
+        if (data.source !== SOURCE || data.type !== "state") return;
+
+        const active = data.screenShareStatus === "active";
+        statusBox.textContent = active ? "Sharing active" : "Not sharing";
+        answerBox.textContent = data.screenAnswer || "Ask about the current screen and Vanta's answer will appear here.";
+
+        if (document.activeElement !== promptBox && typeof data.screenPrompt === "string") {
+          promptBox.value = data.screenPrompt;
+        }
+
+        const visionCooldown = Number(data.visionCooldown || 0);
+        askButton.disabled = Boolean(data.loading) || !active || visionCooldown > 0;
+        askButton.textContent = visionCooldown > 0
+          ? "Image wait " + visionCooldown + "s"
+          : data.loading
+            ? "Working..."
+            : "Ask";
+      });
+
+      window.addEventListener("beforeunload", () => send("popupClosed"));
+      send("ready");
+    </script>
+  </body>
+</html>`;
+}
 
 function getApiUrl(path) {
   const configuredOrigin = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/, "");
@@ -491,6 +686,7 @@ function getConversationPreview(conversation) {
 }
 
 function normalizeComposerInput(value) {
+  if (typeof value !== "string") return "";
   const trimmed = value.trim();
   if (!trimmed.startsWith("/")) return trimmed;
 
@@ -618,6 +814,7 @@ export default function Home() {
   const messagesEndRef = useRef(null);
   const screenVideoRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const screenPopupRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceBaseInputRef = useRef("");
   const deferredConversationSearch = useDeferredValue(conversationSearch);
@@ -838,6 +1035,55 @@ export default function Home() {
     }
   }
 
+  function syncScreenAssistantPopup(overrides = {}) {
+    const popup = screenPopupRef.current;
+    if (!popup || popup.closed) {
+      screenPopupRef.current = null;
+      return;
+    }
+
+    popup.postMessage(
+      {
+        source: SCREEN_ASSISTANT_MESSAGE_SOURCE,
+        type: "state",
+        screenShareStatus,
+        screenPrompt,
+        screenAnswer,
+        loading,
+        visionCooldown,
+        ...overrides,
+      },
+      window.location.origin
+    );
+  }
+
+  function openScreenAssistantWindow() {
+    if (typeof window === "undefined") return false;
+
+    let popup = screenPopupRef.current;
+    if (!popup || popup.closed) {
+      popup = window.open(
+        "",
+        "vanta-screen-assistant",
+        "popup=yes,width=460,height=560,left=80,top=80"
+      );
+    }
+
+    if (!popup) return false;
+
+    screenPopupRef.current = popup;
+    if (!popup.document.body?.dataset?.vantaScreenReady) {
+      popup.document.open();
+      popup.document.write(getScreenAssistantPopupHtml(window.location.origin));
+      popup.document.close();
+      popup.document.body.dataset.vantaScreenReady = "true";
+    }
+
+    popup.focus();
+    setTimeout(() => syncScreenAssistantPopup(), 80);
+    return true;
+  }
+
   function stopScreenShare(message = "Screen sharing stopped.") {
     const stream = screenStreamRef.current;
     stream?.getTracks().forEach((track) => {
@@ -856,11 +1102,15 @@ export default function Home() {
     setScreenPrompt("");
     setScreenAnswer(message || SCREEN_ASSISTANT_IDLE_TEXT);
     if (message) setBanner({ tone: "info", message });
+
+    const popup = screenPopupRef.current;
+    if (popup && !popup.closed) popup.close();
+    screenPopupRef.current = null;
   }
 
   async function startScreenShare() {
     if (screenShareStatus === "active") {
-      setShowScreenAssistant(true);
+      if (!openScreenAssistantWindow()) setShowScreenAssistant(true);
       return;
     }
 
@@ -893,8 +1143,17 @@ export default function Home() {
       }
 
       setScreenShareStatus("active");
-      setShowScreenAssistant(true);
+      const popupOpened = openScreenAssistantWindow();
+      setShowScreenAssistant(!popupOpened);
       setScreenAnswer(SCREEN_ASSISTANT_IDLE_TEXT);
+      setTimeout(
+        () =>
+          syncScreenAssistantPopup({
+            screenShareStatus: "active",
+            screenAnswer: SCREEN_ASSISTANT_IDLE_TEXT,
+          }),
+        120
+      );
       setBanner({
         tone: "info",
         message: "Screen sharing is active. Ask Vanta about the current screen when you're ready.",
@@ -934,8 +1193,9 @@ export default function Home() {
       setScreenAnswer("Capturing your screen...");
       const screenAttachment = await createScreenFrameAttachment(video);
       const conversationSnapshot = activeConversation;
+      const promptText = typeof promptOverride === "string" ? promptOverride : screenPrompt;
       const prompt =
-        normalizeComposerInput(promptOverride ?? screenPrompt) ||
+        normalizeComposerInput(promptText) ||
         "Look at my current screen and tell me what I should do next.";
       const userMessage = {
         id: crypto.randomUUID(),
@@ -974,8 +1234,67 @@ export default function Home() {
   useEffect(() => {
     return () => {
       screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (screenPopupRef.current && !screenPopupRef.current.closed) {
+        screenPopupRef.current.close();
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const handleScreenPopupMessage = (event) => {
+      const isTrustedPopup =
+        screenPopupRef.current && event.source === screenPopupRef.current;
+      if (event.origin !== window.location.origin && !isTrustedPopup) return;
+      const data = event.data || {};
+      if (data.source !== SCREEN_ASSISTANT_MESSAGE_SOURCE) return;
+
+      if (data.type === "ready") {
+        syncScreenAssistantPopup();
+        return;
+      }
+
+      if (data.type === "ask") {
+        const prompt = typeof data.prompt === "string" ? data.prompt : "";
+        setScreenPrompt(prompt);
+        askAboutSharedScreen(prompt);
+        return;
+      }
+
+      if (data.type === "stop") {
+        stopScreenShare("Screen sharing stopped.");
+        return;
+      }
+
+      if (data.type === "close" || data.type === "popupClosed") {
+        screenPopupRef.current = null;
+        setShowScreenAssistant(false);
+      }
+    };
+
+    window.addEventListener("message", handleScreenPopupMessage);
+    return () => window.removeEventListener("message", handleScreenPopupMessage);
+  });
+
+  useEffect(() => {
+    const popup = screenPopupRef.current;
+    if (!popup || popup.closed) {
+      screenPopupRef.current = null;
+      return;
+    }
+
+    popup.postMessage(
+      {
+        source: SCREEN_ASSISTANT_MESSAGE_SOURCE,
+        type: "state",
+        screenShareStatus,
+        screenPrompt,
+        screenAnswer,
+        loading,
+        visionCooldown,
+      },
+      window.location.origin
+    );
+  }, [screenShareStatus, screenPrompt, screenAnswer, loading, visionCooldown]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2166,6 +2485,7 @@ export default function Home() {
                 presetMenuRef={presetMenuRef}
                 screenShareStatus={screenShareStatus}
                 startScreenShare={startScreenShare}
+                openScreenAssistantWindow={openScreenAssistantWindow}
                 setShowScreenAssistant={setShowScreenAssistant}
               />
             </section>
@@ -2224,7 +2544,7 @@ export default function Home() {
               Stop sharing
             </button>
             <button
-              onClick={askAboutSharedScreen}
+              onClick={() => askAboutSharedScreen()}
               disabled={loading || visionCooldown > 0}
               className="rounded-[0.75rem] bg-violet-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/32"
             >
@@ -2345,6 +2665,7 @@ function WorkspaceHeader({
   presetMenuRef,
   screenShareStatus,
   startScreenShare,
+  openScreenAssistantWindow,
   setShowScreenAssistant,
 }) {
   const hasUserMessages = messages.some((message) => message.role === "user");
@@ -2878,7 +3199,9 @@ function WorkspaceHeader({
             </div>
             <button
               onClick={() =>
-                screenSharingActive ? setShowScreenAssistant(true) : startScreenShare()
+                screenSharingActive
+                  ? openScreenAssistantWindow() || setShowScreenAssistant(true)
+                  : startScreenShare()
               }
               disabled={screenShareStatus === "starting"}
               className={`rounded-[0.82rem] border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:text-white/28 ${
