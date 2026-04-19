@@ -117,7 +117,7 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
       }
       .panel {
         min-height: 100vh;
-        padding: 14px;
+        padding: 10px;
         background:
           radial-gradient(circle at 16% 0%, rgba(139, 92, 246, 0.22), transparent 30%),
           linear-gradient(180deg, #080913 0%, #050711 100%);
@@ -127,10 +127,10 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 10px;
-        padding: 10px 12px;
+        margin-bottom: 8px;
+        padding: 8px 10px;
         border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 14px;
+        border-radius: 12px;
         background: rgba(255,255,255,0.035);
       }
       .brand {
@@ -156,24 +156,24 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         color: white;
       }
       textarea {
-        min-height: 96px;
+        min-height: 74px;
         resize: vertical;
-        padding: 12px;
+        padding: 10px;
         outline: none;
         font: inherit;
-        font-size: 14px;
+        font-size: 13px;
       }
       textarea:focus { border-color: rgba(167, 139, 250, 0.5); }
       .answer {
-        min-height: 150px;
-        margin-top: 10px;
-        padding: 12px;
+        min-height: 118px;
+        margin-top: 8px;
+        padding: 10px;
         white-space: pre-wrap;
-        font-size: 14px;
+        font-size: 13px;
         line-height: 1.55;
       }
       .label {
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.2em;
@@ -184,14 +184,14 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 12px;
+        margin-top: 10px;
       }
       button {
         border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 12px;
+        border-radius: 10px;
         background: rgba(255,255,255,0.045);
         color: rgba(255,255,255,0.8);
-        padding: 10px 12px;
+        padding: 8px 10px;
         font: inherit;
         cursor: pointer;
       }
@@ -208,9 +208,9 @@ function getScreenAssistantPopupHtml(openerOrigin = "") {
       }
       .spacer { flex: 1; }
       .hint {
-        margin-top: 10px;
+        margin-top: 8px;
         color: rgba(255,255,255,0.38);
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1.45;
       }
     </style>
@@ -1065,7 +1065,7 @@ export default function Home() {
       popup = window.open(
         "",
         "vanta-screen-assistant",
-        "popup=yes,width=460,height=560,left=80,top=80"
+        "popup=yes,width=420,height=440,left=80,top=80,toolbar=no,location=no,menubar=no,status=no,scrollbars=no,resizable=yes"
       );
     }
 
