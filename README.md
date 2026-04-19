@@ -16,6 +16,23 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Monetization
+
+Vanta includes a `/pricing` page and upgrade links inside the app. The Pro button is inactive until a payment link is configured.
+
+Add these optional environment variables in Vercel:
+
+```bash
+NEXT_PUBLIC_VANTA_PRO_PAYMENT_LINK=https://buy.stripe.com/your-payment-link
+NEXT_PUBLIC_VANTA_SUPPORT_LINK=https://buy.stripe.com/your-support-link
+```
+
+If you use Stripe Payment Links, set the post-payment redirect to:
+
+```bash
+https://your-domain.com/thanks
+```
+
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

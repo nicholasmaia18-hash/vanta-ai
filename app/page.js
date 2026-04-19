@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   startTransition,
   useDeferredValue,
@@ -2383,6 +2384,12 @@ export default function Home() {
           </div>
 
           <div className="border-t border-white/6 px-4 py-4 text-sm leading-6 text-white/42">
+            <Link
+              href="/pricing"
+              className="mb-4 block rounded-[1rem] border border-violet-300/16 bg-violet-500/10 px-4 py-3 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
+            >
+              Upgrade to Vanta Pro
+            </Link>
             <p className="font-medium text-white/72">Private by default</p>
             <p className="mt-2">
               Conversations stay in this browser unless you export or share one
@@ -2414,6 +2421,12 @@ export default function Home() {
                 >
                   Chats
                 </button>
+                <Link
+                  href="/pricing"
+                  className="rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-500/16"
+                >
+                  Pro
+                </Link>
                 <button
                   onClick={createNewConversation}
                   className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
@@ -2770,6 +2783,12 @@ function WorkspaceHeader({
           </div>
 
           <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 pr-1 sm:mx-0 sm:gap-2.5 lg:max-w-[560px] lg:flex-wrap lg:justify-end lg:overflow-visible">
+            <Link
+              href="/pricing"
+              className="shrink-0 rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2.5 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
+            >
+              Upgrade
+            </Link>
             <select
               value={activeModel}
               onChange={(event) => changeModel(event.target.value)}
