@@ -13,7 +13,10 @@ import { loadWorkspaceState, saveWorkspaceState } from "./lib/vanta-db";
 import { getSyncReadiness } from "./lib/sync-config";
 import { mergeConversations, sortConversations } from "./lib/supabase";
 
-const STORAGE_KEYS = { cooldownUntil: "vanta_cooldown_until" };
+const STORAGE_KEYS = {
+  cooldownUntil: "vanta_cooldown_until",
+  visionCooldownUntil: "vanta_vision_cooldown_until",
+};
 const CANONICAL_API_ORIGIN = "https://vanta-ai-chat.vercel.app";
 const MIN_PROVIDER_COOLDOWN_SECONDS = 130;
 const AUTO_MODEL = "vanta/auto";
@@ -118,6 +121,10 @@ function getModelDisplayName(model) {
 
 function messageHasImageAttachment(message) {
   return (message?.attachments || []).some((attachment) => attachment.kind === "image");
+}
+
+function messagesIncludeImage(messages = []) {
+  return messages.some(messageHasImageAttachment);
 }
 
 function prepareMessagesForRequest(messages) {
@@ -550,7 +557,9 @@ function getAssistantContextBadges(message) {
 }
 
 function isProviderCooldownMessage(message) {
-  return message?.requestContext?.errorType === "provider_cooldown";
+  return ["provider_cooldown", "vision_cooldown"].includes(
+    message?.requestContext?.errorType
+  );
 }
 
 function areDraftAttachmentsEqual(left = [], right = []) {
@@ -575,6 +584,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [visionCooldown, setVisionCooldown] = useState(0);
   const [usageTimestamps, setUsageTimestamps] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
   const [banner, setBanner] = useState(null);
@@ -905,7 +915,14 @@ export default function Home() {
   }
 
   async function askAboutSharedScreen(promptOverride) {
-    if (loading || cooldown > 0 || !activeConversation) return;
+    if (loading || !activeConversation) return;
+
+    if (visionCooldown > 0) {
+      const message = `Image analysis is cooling down for ${visionCooldown} more seconds. Wait for the timer, then ask once.`;
+      setScreenAnswer(message);
+      setBanner({ tone: "info", message });
+      return;
+    }
 
     const video = screenVideoRef.current;
     if (screenShareStatus !== "active" || !video) {
@@ -966,6 +983,9 @@ export default function Home() {
     async function initialize() {
       const sharedConversation = parseSharedConversation();
       const storedCooldown = window.localStorage.getItem(STORAGE_KEYS.cooldownUntil);
+      const storedVisionCooldown = window.localStorage.getItem(
+        STORAGE_KEYS.visionCooldownUntil
+      );
 
       try {
         const storedState = await loadWorkspaceState();
@@ -1005,6 +1025,14 @@ export default function Home() {
             Math.ceil((Number(storedCooldown) - Date.now()) / 1000)
           );
           setCooldown(remaining);
+        }
+
+        if (storedVisionCooldown) {
+          const remaining = Math.max(
+            0,
+            Math.ceil((Number(storedVisionCooldown) - Date.now()) / 1000)
+          );
+          setVisionCooldown(remaining);
         }
 
         if (sharedConversation) {
@@ -1207,6 +1235,24 @@ export default function Home() {
   }, [cooldown]);
 
   useEffect(() => {
+    if (visionCooldown <= 0) {
+      window.localStorage.removeItem(STORAGE_KEYS.visionCooldownUntil);
+      return;
+    }
+
+    window.localStorage.setItem(
+      STORAGE_KEYS.visionCooldownUntil,
+      String(Date.now() + visionCooldown * 1000)
+    );
+
+    const timer = setInterval(() => {
+      setVisionCooldown((current) => (current <= 1 ? 0 : current - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [visionCooldown]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
@@ -1314,6 +1360,7 @@ export default function Home() {
   }) {
     const streamingMessageId = crypto.randomUUID();
     const apiMessages = prepareMessagesForRequest(requestMessages);
+    const requestHasImage = messagesIncludeImage(requestMessages);
     const requestContext = {
       researchEnabled: Boolean(conversationSnapshot.researchMode),
       attachmentCount:
@@ -1354,19 +1401,30 @@ export default function Home() {
       if (!response.ok || !response.body) {
         const data = await response.json();
         let errorMessage = data.error || "Request failed.";
+        const isVisionLimit = Boolean(data.visionRateLimited || requestHasImage);
 
         if (data.isRateLimited && data.retryAfter) {
           const seconds = data.providerRateLimited
             ? Math.max(Number(data.retryAfter) || 0, MIN_PROVIDER_COOLDOWN_SECONDS)
             : Number(data.retryAfter) || 0;
-          setCooldown(seconds);
-          errorMessage = data.providerRateLimited
-            ? `ShuttleAI is cooling down. Wait 2 minutes, then press Retry once.`
-            : data.error || `Retry in ${seconds} seconds.`;
+          if (isVisionLimit) {
+            setVisionCooldown(seconds);
+            errorMessage = `Image analysis is cooling down. Wait ${seconds} seconds, then press Retry once. Text-only questions can still work.`;
+          } else {
+            setCooldown(seconds);
+            errorMessage = data.providerRateLimited
+              ? `ShuttleAI is cooling down. Wait 2 minutes, then press Retry once.`
+              : data.error || `Retry in ${seconds} seconds.`;
+          }
         } else if (data.retryAfter) {
           const seconds = Number(data.retryAfter) || 0;
-          setCooldown(seconds);
-          errorMessage = `Retry in ${seconds} seconds.`;
+          if (isVisionLimit) {
+            setVisionCooldown(seconds);
+            errorMessage = `Image analysis is cooling down. Wait ${seconds} seconds, then press Retry once.`;
+          } else {
+            setCooldown(seconds);
+            errorMessage = `Retry in ${seconds} seconds.`;
+          }
         }
 
         recordRequest({
@@ -1391,7 +1449,9 @@ export default function Home() {
               requestContext: {
                 ...requestContext,
                 errorType: data.providerRateLimited
-                  ? "provider_cooldown"
+                  ? isVisionLimit
+                    ? "vision_cooldown"
+                    : "provider_cooldown"
                   : "request_error",
               },
             },
@@ -1514,12 +1574,22 @@ export default function Home() {
   }
 
   async function sendMessage() {
+    const hasPendingImage = pendingAttachments.some((attachment) => attachment.kind === "image");
+
     if (
       (!input.trim() && pendingAttachments.length === 0) ||
       loading ||
-      cooldown > 0 ||
+      (!hasPendingImage && cooldown > 0) ||
       !activeConversation
     ) {
+      return;
+    }
+
+    if (hasPendingImage && visionCooldown > 0) {
+      setBanner({
+        tone: "info",
+        message: `Image analysis is cooling down for ${visionCooldown} more seconds. You can remove the image and send text-only while you wait.`,
+      });
       return;
     }
 
@@ -1551,13 +1621,24 @@ export default function Home() {
   }
 
   async function regenerateLatestResponse() {
-    if (loading || cooldown > 0 || !activeConversation) return;
+    if (loading || !activeConversation) return;
 
     const context = getLatestRetryContext(activeConversation.messages);
     if (!context) {
       setBanner({
         tone: "error",
         message: "There isn't a user prompt to regenerate yet.",
+      });
+      return;
+    }
+
+    const retryUsesImage = messagesIncludeImage(context.requestMessages);
+    if (!retryUsesImage && cooldown > 0) return;
+
+    if (retryUsesImage && visionCooldown > 0) {
+      setBanner({
+        tone: "info",
+        message: `Image analysis is cooling down for ${visionCooldown} more seconds. Wait for the timer, then press Retry once.`,
       });
       return;
     }
@@ -1859,8 +1940,15 @@ export default function Home() {
   const hasStreamingPlaceholder = messages.some(
     (message) => message.role === "assistant" && !message.content?.trim()
   );
+  const hasPendingImage = pendingAttachments.some((attachment) => attachment.kind === "image");
   const buttonLabel =
-    cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Send";
+    hasPendingImage && visionCooldown > 0
+      ? `Image wait ${visionCooldown}s`
+      : !hasPendingImage && cooldown > 0
+        ? `Wait ${cooldown}s`
+        : loading
+          ? "Working..."
+          : "Send";
 
   return (
     <main className="h-[100dvh] overflow-hidden bg-[#0b0b0f] text-white lg:h-auto lg:min-h-screen lg:overflow-visible">
@@ -2031,6 +2119,7 @@ export default function Home() {
                 buttonLabel={buttonLabel}
                 changeModel={changeModel}
                 cooldown={cooldown}
+                visionCooldown={visionCooldown}
                 copyMessage={copyMessage}
                 editDraft={editDraft}
                 editingMessageId={editingMessageId}
@@ -2136,10 +2225,14 @@ export default function Home() {
             </button>
             <button
               onClick={askAboutSharedScreen}
-              disabled={loading || cooldown > 0}
+              disabled={loading || visionCooldown > 0}
               className="rounded-[0.75rem] bg-violet-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/32"
             >
-              {cooldown > 0 ? `Wait ${cooldown}s` : loading ? "Working..." : "Ask"}
+              {visionCooldown > 0
+                ? `Image wait ${visionCooldown}s`
+                : loading
+                  ? "Working..."
+                  : "Ask"}
             </button>
             <button
               onClick={() => setShowScreenAssistant(false)}
@@ -2205,6 +2298,7 @@ function WorkspaceHeader({
   buttonLabel,
   changeModel,
   cooldown,
+  visionCooldown,
   copyMessage,
   editDraft,
   editingMessageId,
@@ -2261,6 +2355,20 @@ function WorkspaceHeader({
       : screenSharingActive
         ? "Screen panel"
         : "Share screen";
+  const latestRetryContext = getLatestRetryContext(messages);
+  const latestRetryUsesImage = latestRetryContext
+    ? messagesIncludeImage(latestRetryContext.requestMessages)
+    : false;
+  const retryCooldownLabel = latestRetryUsesImage
+    ? visionCooldown > 0
+      ? `Image wait ${visionCooldown}s`
+      : null
+    : cooldown > 0
+      ? `Wait ${cooldown}s`
+      : null;
+  const retryDisabled =
+    !latestRetryableAssistantId || loading || Boolean(retryCooldownLabel);
+  const hasPendingImage = pendingAttachments.some((attachment) => attachment.kind === "image");
 
   return (
     <>
@@ -2332,14 +2440,14 @@ function WorkspaceHeader({
             </button>
             <button
               onClick={regenerateLatestResponse}
-              disabled={!latestRetryableAssistantId || loading || cooldown > 0}
+              disabled={retryDisabled}
               className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:text-white/28"
             >
               Regenerate
             </button>
-            {cooldown > 0 && (
+            {retryCooldownLabel && (
               <div className="shrink-0 rounded-[0.9rem] border border-violet-400/18 bg-violet-500/10 px-3 py-2.5 text-sm text-violet-200">
-                Wait {cooldown}s
+                {retryCooldownLabel}
               </div>
             )}
           </div>
@@ -2626,10 +2734,10 @@ function WorkspaceHeader({
                     {isRetryableAssistant && (
                       <button
                         onClick={regenerateLatestResponse}
-                        disabled={loading || cooldown > 0}
+                        disabled={loading || Boolean(retryCooldownLabel)}
                         className="rounded-[0.75rem] border border-white/8 px-2.5 py-1.5 text-white/58 transition hover:bg-white/[0.06] hover:text-white/78 disabled:cursor-not-allowed disabled:text-white/28"
                       >
-                        {cooldown > 0 ? `Wait ${cooldown}s` : "Retry"}
+                        {retryCooldownLabel || "Retry"}
                       </button>
                     )}
                     <button
@@ -2801,7 +2909,12 @@ function WorkspaceHeader({
 
           <button
             onClick={sendMessage}
-            disabled={loading || cooldown > 0 || (!input.trim() && pendingAttachments.length === 0)}
+            disabled={
+              loading ||
+              (!hasPendingImage && cooldown > 0) ||
+              (hasPendingImage && visionCooldown > 0) ||
+              (!input.trim() && pendingAttachments.length === 0)
+            }
             className="w-full rounded-[1rem] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-6 py-3 text-base font-medium text-white shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none sm:w-auto sm:py-3.5"
           >
             {buttonLabel}

@@ -35,16 +35,21 @@ const ATTACHMENT_CONTEXT_WINDOW = 4;
 const PROVIDER_RATE_LIMIT_MIN_SECONDS = 120;
 const PROVIDER_RATE_LIMIT_BUFFER_SECONDS = 10;
 
-function getProviderCooldownRemaining() {
-  const cooldownUntil = globalThis.__vantaProviderCooldownUntil || 0;
+function getProviderCooldownStore() {
+  globalThis.__vantaProviderCooldowns ||= {};
+  return globalThis.__vantaProviderCooldowns;
+}
+
+function getProviderCooldownRemaining(key = "text") {
+  const cooldownUntil = getProviderCooldownStore()[key] || 0;
   return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
 }
 
-function rememberProviderCooldown(seconds) {
+function rememberProviderCooldown(key = "text", seconds) {
   const safeSeconds =
     Math.max(Number(seconds) || 0, PROVIDER_RATE_LIMIT_MIN_SECONDS) +
     PROVIDER_RATE_LIMIT_BUFFER_SECONDS;
-  globalThis.__vantaProviderCooldownUntil = Date.now() + safeSeconds * 1000;
+  getProviderCooldownStore()[key] = Date.now() + safeSeconds * 1000;
   return safeSeconds;
 }
 
@@ -370,6 +375,7 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
     fallbackModel,
     modelStrategy: modelRoute.modelStrategy,
     requiresVision: modelRoute.requiresVision,
+    cooldownKey: modelRoute.requiresVision ? "vision" : "text",
     contextMessageCount: contextMessages.length,
     researchResults,
     requestBody: {
@@ -459,7 +465,7 @@ function isUnsupportedImageError(error) {
   return /image|vision|multimodal|content part|image_url/i.test(message);
 }
 
-function buildErrorResponse(error) {
+function buildErrorResponse(error, cooldownKey = "text", requiresVision = false) {
   console.error("ShuttleAI error:", error);
 
   const retryAfterRaw =
@@ -470,11 +476,13 @@ function buildErrorResponse(error) {
   const isRateLimited =
     error?.status === 429 || error?.code === "rate_limit_exceeded";
   const safeRetryAfter = isRateLimited
-    ? rememberProviderCooldown(retryAfter || 60)
+    ? rememberProviderCooldown(cooldownKey, retryAfter || 60)
     : retryAfter;
   const status = isRateLimited ? 429 : error?.status || (retryAfter ? 429 : 500);
   const message = isUnsupportedImageError(error)
     ? "This model could not read the image. Vanta now routes screenshots to a vision model automatically, so try sending it again."
+    : isRateLimited && requiresVision
+      ? "Image analysis is cooling down on the free plan. Text messages can still work while you wait."
     : error.message || "Something went wrong";
 
   return jsonNoStore(
@@ -483,6 +491,7 @@ function buildErrorResponse(error) {
       retryAfter: safeRetryAfter,
       isRateLimited,
       providerRateLimited: isRateLimited,
+      visionRateLimited: isRateLimited && requiresVision,
     },
     { status }
   );
@@ -494,25 +503,11 @@ export function OPTIONS(req) {
 
 export async function POST(req) {
   const respond = (response) => applyCorsHeaders(req, response);
+  let config = null;
 
   try {
     const originError = validateRequestOrigin(req);
     if (originError) return respond(originError);
-
-    const providerCooldown = getProviderCooldownRemaining();
-    if (providerCooldown > 0) {
-      return respond(
-        jsonNoStore(
-          {
-            error: `ShuttleAI is cooling down. Wait ${providerCooldown} seconds before sending another message.`,
-            retryAfter: providerCooldown,
-            isRateLimited: true,
-            providerRateLimited: true,
-          },
-          { status: 429 }
-        )
-      );
-    }
 
     const rateLimitError = enforceApiRateLimit(req, "chat-write");
     if (rateLimitError) return respond(rateLimitError);
@@ -544,12 +539,30 @@ export async function POST(req) {
       researchMode,
     } = validateChatPayload(body);
     const systemPrompt = validatedPrompt || DEFAULT_SYSTEM_PROMPT;
-    const config = await buildRequest(
+    config = await buildRequest(
       messages,
       selectedModel,
       systemPrompt,
       researchMode
     );
+
+    const providerCooldown = getProviderCooldownRemaining(config.cooldownKey);
+    if (providerCooldown > 0) {
+      return respond(
+        jsonNoStore(
+          {
+            error: config.requiresVision
+              ? "Image analysis is still cooling down on the free plan. Text messages can still work while you wait."
+              : `ShuttleAI is cooling down. Wait ${providerCooldown} seconds before sending another message.`,
+            retryAfter: providerCooldown,
+            isRateLimited: true,
+            providerRateLimited: true,
+            visionRateLimited: config.requiresVision,
+          },
+          { status: 429 }
+        )
+      );
+    }
 
     if (stream) {
       const completionResult = await runCompletion({
@@ -599,6 +612,6 @@ export async function POST(req) {
       })
     );
   } catch (error) {
-    return respond(buildErrorResponse(error));
+    return respond(buildErrorResponse(error, config?.cooldownKey, config?.requiresVision));
   }
 }
