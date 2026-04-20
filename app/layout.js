@@ -1,8 +1,6 @@
-import Script from "next/script";
 import "./globals.css";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://vanta-ai-chat.vercel.app";
-const ADSENSE_CLIENT = process.env.NEXT_PUBLIC_ADSENSE_CLIENT || "";
 
 export const metadata = {
   metadataBase: new URL(APP_URL),
@@ -46,18 +44,7 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
-        {ADSENSE_CLIENT ? (
-          <Script
-            async
-            id="google-adsense"
-            strategy="beforeInteractive"
-            crossOrigin="anonymous"
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT}`}
-          />
-        ) : null}
-        {children}
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import AdSenseAd from "./components/adsense-ad";
 import { MessageBody } from "./components/message-body";
 import { loadWorkspaceState, saveWorkspaceState } from "./lib/vanta-db";
 import { getSyncReadiness } from "./lib/sync-config";
@@ -2396,7 +2395,6 @@ export default function Home() {
               Conversations stay in this browser unless you export or share one
               yourself.
             </p>
-            <AdSenseAd className="mt-4 min-h-[120px]" />
           </div>
         </aside>
 

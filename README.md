@@ -35,7 +35,7 @@ https://your-domain.com/thanks
 
 ## Ads
 
-Vanta can also load Google AdSense once your site is approved. Auto ads only need your publisher ID. Manual in-app ad slots also need an ad slot ID.
+Vanta can also load Google AdSense once your site is approved. Ads are kept on public/marketing pages such as `/pricing`, not inside the private chat workspace. Manual ad slots need both your publisher ID and ad slot ID.
 
 ```bash
 NEXT_PUBLIC_ADSENSE_CLIENT=ca-pub-xxxxxxxxxxxxxxxx
