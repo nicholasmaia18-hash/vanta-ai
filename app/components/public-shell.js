@@ -3,6 +3,7 @@ import Link from "next/link";
 const publicLinks = [
   { href: "/about", label: "About" },
   { href: "/guides", label: "Guides" },
+  { href: "/arcade", label: "Arcade" },
   { href: "/pricing", label: "Pricing" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },

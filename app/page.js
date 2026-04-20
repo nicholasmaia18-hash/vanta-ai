@@ -2470,6 +2470,12 @@ export default function Home() {
 
           <div className="border-t border-white/6 px-4 py-4 text-sm leading-6 text-white/42">
             <Link
+              href="/arcade"
+              className="mb-3 block rounded-[1rem] border border-white/8 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/72 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              Open Vanta Arcade
+            </Link>
+            <Link
               href="/pricing"
               className="mb-4 block rounded-[1rem] border border-violet-300/16 bg-violet-500/10 px-4 py-3 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
             >
@@ -2511,6 +2517,12 @@ export default function Home() {
                   className="rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-500/16"
                 >
                   Pro
+                </Link>
+                <Link
+                  href="/arcade"
+                  className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
+                >
+                  Arcade
                 </Link>
                 <button
                   onClick={createNewConversation}
@@ -3460,6 +3472,13 @@ function BrowserSearchChrome({
           <span className="truncate">Search</span>
           <span className="text-white/24">x</span>
         </div>
+        <Link
+          href="/arcade"
+          className="hidden min-w-[136px] items-center justify-between rounded-[0.75rem] border border-violet-300/14 bg-violet-500/8 px-3 py-2 text-sm text-violet-50/70 transition hover:bg-violet-500/14 sm:flex"
+        >
+          <span className="truncate">Arcade</span>
+          <span className="text-violet-100/32">open</span>
+        </Link>
         <button
           type="button"
           onClick={() => setQuery("")}
