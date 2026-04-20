@@ -42,6 +42,8 @@ NEXT_PUBLIC_ADSENSE_CLIENT=ca-pub-xxxxxxxxxxxxxxxx
 NEXT_PUBLIC_ADSENSE_SLOT=1234567890
 ```
 
+Public trust pages are available at `/about`, `/guides`, `/privacy`, `/terms`, and `/contact`.
+
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

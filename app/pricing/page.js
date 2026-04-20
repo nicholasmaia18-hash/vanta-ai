@@ -1,5 +1,6 @@
 import Link from "next/link";
 import AdSenseAd from "../components/adsense-ad";
+import { PublicFooter, PublicNav } from "../components/public-shell";
 
 const proPaymentLink = process.env.NEXT_PUBLIC_VANTA_PRO_PAYMENT_LINK || "";
 const supportLink = process.env.NEXT_PUBLIC_VANTA_SUPPORT_LINK || "";
@@ -30,20 +31,7 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen bg-[#0b0b0f] px-5 py-8 text-white sm:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-8">
-        <nav className="flex items-center justify-between gap-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-3 text-sm text-white/66 transition hover:text-white"
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/16 bg-violet-500/10 text-sm font-semibold text-violet-100">
-              V
-            </span>
-            Back to Vanta
-          </Link>
-          <span className="rounded-full border border-white/8 bg-white/[0.04] px-3 py-1.5 text-xs text-white/48">
-            Founding pricing
-          </span>
-        </nav>
+        <PublicNav />
 
         <section className="rounded-[1.6rem] border border-white/8 bg-[#111217] p-6 shadow-[0_30px_100px_rgba(0,0,0,0.28)] sm:p-10">
           <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-violet-100/48">
@@ -132,6 +120,7 @@ export default function PricingPage() {
             )}
           </div>
         </section>
+        <PublicFooter />
       </div>
     </main>
   );
