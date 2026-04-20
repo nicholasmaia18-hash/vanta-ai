@@ -33,6 +33,18 @@ const MODEL_DISPLAY_NAMES = {
   [FAST_MODEL]: "GPT-OSS 120B",
   "openai/gpt-5.4": "GPT-5.4",
 };
+const WEB_SEARCH_ENGINES = [
+  {
+    id: "google",
+    label: "Google",
+    buildUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+  },
+  {
+    id: "duckduckgo",
+    label: "DuckDuckGo",
+    buildUrl: (query) => `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+  },
+];
 const PROMPT_PRESETS = [
   { label: "Explain", value: "Explain this clearly in simple terms:" },
   { label: "Summarize", value: "Summarize this into the key points:" },
@@ -736,6 +748,33 @@ function normalizeComposerInput(value) {
   return `${preset}\n\n${remainder}`;
 }
 
+function getWebSearchEngine(engineId) {
+  return (
+    WEB_SEARCH_ENGINES.find((engine) => engine.id === engineId) ||
+    WEB_SEARCH_ENGINES[0]
+  );
+}
+
+function buildWebSearchTarget(rawValue, engineId) {
+  const value = typeof rawValue === "string" ? rawValue.trim() : "";
+  if (!value) return "";
+
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // Keep the launcher safe: Vanta only opens web URLs or normal searches.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return "";
+
+  const hasWhitespace = /\s/.test(value);
+  const looksLikeHost =
+    !hasWhitespace &&
+    (/^(localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?(\/|$)/i.test(value) ||
+      /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?(\/.*)?$/i.test(value));
+
+  if (looksLikeHost) return `https://${value}`;
+
+  return getWebSearchEngine(engineId).buildUrl(value);
+}
+
 function getRetrySeconds(value, fallback = 0) {
   const seconds = Math.ceil(Number(value));
   return Number.isFinite(seconds) && seconds > 0 ? seconds : fallback;
@@ -837,6 +876,8 @@ export default function Home() {
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [input, setInput] = useState("");
+  const [webSearchQuery, setWebSearchQuery] = useState("");
+  const [webSearchEngine, setWebSearchEngine] = useState(WEB_SEARCH_ENGINES[0].id);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [visionCooldown, setVisionCooldown] = useState(0);
@@ -2187,6 +2228,50 @@ export default function Home() {
     });
   }
 
+  function openWebSearch(event) {
+    event?.preventDefault?.();
+
+    const target = buildWebSearchTarget(webSearchQuery, webSearchEngine);
+    if (!target) {
+      setBanner({
+        tone: "error",
+        message: "Type a normal URL or search phrase. Vanta blocks custom browser protocols for safety.",
+      });
+      return;
+    }
+
+    window.open(target, "_blank", "noopener,noreferrer");
+    setBanner({
+      tone: "success",
+      message: target.startsWith("http") ? "Opened in a new browser tab." : "Search opened.",
+    });
+  }
+
+  function askVantaAboutWebSearch() {
+    const query = webSearchQuery.trim();
+    if (!query) {
+      setBanner({
+        tone: "error",
+        message: "Type a URL or search phrase first.",
+      });
+      return;
+    }
+
+    if (activeConversation && !researchMode) {
+      updateConversation(activeConversation.id, () => ({ researchMode: true }));
+    }
+
+    setInput((current) =>
+      current
+        ? `${current}\n\nUse web context to help with this: ${query}`
+        : `Use web context to help with this:\n\n${query}`
+    );
+    setBanner({
+      tone: "info",
+      message: "Added the web query to Vanta and turned Web on. Press Ask Vanta when you're ready.",
+    });
+  }
+
   function updateSystemPrompt(nextPrompt) {
     if (!activeConversation) return;
     updateConversation(activeConversation.id, () => ({ systemPrompt: nextPrompt }));
@@ -2517,11 +2602,13 @@ export default function Home() {
                 fileInputRef={fileInputRef}
                 hasCustomPrompt={hasCustomPrompt}
                 hasStreamingPlaceholder={hasStreamingPlaceholder}
+                askVantaAboutWebSearch={askVantaAboutWebSearch}
                 input={input}
                 isListening={isListening}
                 loading={loading}
                 messages={messages}
                 messagesEndRef={messagesEndRef}
+                openWebSearch={openWebSearch}
                 pendingAttachments={pendingAttachments}
                 latestRetryableAssistantId={latestRetryableAssistantId}
                 removeAttachment={removeAttachment}
@@ -2547,7 +2634,11 @@ export default function Home() {
                 handlePaste={handlePaste}
                 sendMessage={sendMessage}
                 voiceSupported={voiceSupported}
+                webSearchEngine={webSearchEngine}
+                webSearchQuery={webSearchQuery}
                 resetConversation={resetConversation}
+                setWebSearchEngine={setWebSearchEngine}
+                setWebSearchQuery={setWebSearchQuery}
                 applyPreset={applyPreset}
                 applySchoolSupportOption={applySchoolSupportOption}
                 schoolSupportOptions={SCHOOL_SUPPORT_OPTIONS}
@@ -2699,12 +2790,14 @@ function WorkspaceHeader({
   fileInputRef,
   hasCustomPrompt,
   hasStreamingPlaceholder,
+  askVantaAboutWebSearch,
   input,
   isListening,
   latestRetryableAssistantId,
   loading,
   messages,
   messagesEndRef,
+  openWebSearch,
   pendingAttachments,
   removeAttachment,
   researchMode,
@@ -2729,7 +2822,11 @@ function WorkspaceHeader({
   handlePaste,
   sendMessage,
   voiceSupported,
+  webSearchEngine,
+  webSearchQuery,
   resetConversation,
+  setWebSearchEngine,
+  setWebSearchQuery,
   applyPreset,
   applySchoolSupportOption,
   schoolSupportOptions,
@@ -2766,6 +2863,15 @@ function WorkspaceHeader({
 
   return (
     <>
+      <BrowserSearchChrome
+        query={webSearchQuery}
+        setQuery={setWebSearchQuery}
+        engine={webSearchEngine}
+        setEngine={setWebSearchEngine}
+        openWebSearch={openWebSearch}
+        askVantaAboutWebSearch={askVantaAboutWebSearch}
+      />
+
       <div className="mb-3 shrink-0 border-b border-white/6 pb-3 sm:mb-4 sm:pb-4">
         <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
@@ -3332,6 +3438,95 @@ function WorkspaceHeader({
         onChange={handleAttachmentChange}
       />
     </>
+  );
+}
+
+function BrowserSearchChrome({
+  query,
+  setQuery,
+  engine,
+  setEngine,
+  openWebSearch,
+  askVantaAboutWebSearch,
+}) {
+  return (
+    <div className="mb-3 rounded-[1rem] border border-blue-400/18 bg-[#050916] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:mb-4">
+      <div className="mb-2 flex items-center gap-2 overflow-x-auto">
+        <div className="flex min-w-[136px] items-center justify-between rounded-[0.75rem] border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-50">
+          <span className="truncate">Vanta AI</span>
+          <span className="text-blue-100/38">x</span>
+        </div>
+        <div className="hidden min-w-[136px] items-center justify-between rounded-[0.75rem] border border-white/8 bg-white/[0.035] px-3 py-2 text-sm text-white/45 sm:flex">
+          <span className="truncate">Search</span>
+          <span className="text-white/24">x</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setQuery("")}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.75rem] border border-white/8 bg-white/[0.035] text-lg leading-none text-white/58 transition hover:bg-white/[0.07] hover:text-white"
+          aria-label="Clear search"
+        >
+          +
+        </button>
+      </div>
+
+      <form onSubmit={openWebSearch} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {["<-", "->", "R"].map((label) => (
+            <button
+              key={label}
+              type="button"
+              disabled
+              className="h-9 w-9 rounded-full border border-blue-400/14 bg-[#071024] text-xs text-blue-100/28"
+              aria-label={label}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[0.85rem] border border-blue-400/18 bg-[#070b18] px-3 py-2 focus-within:border-blue-300/38">
+          <span className="hidden text-xs font-medium uppercase tracking-[0.18em] text-blue-100/32 sm:inline">
+            Web
+          </span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search Google, DuckDuckGo, or paste a URL..."
+            className="min-w-0 flex-1 bg-transparent text-base text-white outline-none placeholder:text-white/26 sm:text-sm"
+          />
+        </div>
+        <select
+          value={engine}
+          onChange={(event) => setEngine(event.target.value)}
+          className="rounded-[0.85rem] border border-white/8 bg-[#11131b] px-3 py-2.5 text-sm text-white/70 outline-none"
+        >
+          {WEB_SEARCH_ENGINES.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="flex-1 rounded-[0.85rem] border border-blue-300/20 bg-blue-500/14 px-3 py-2.5 text-sm font-medium text-blue-50 transition hover:bg-blue-500/20 sm:flex-none"
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={askVantaAboutWebSearch}
+            className="flex-1 rounded-[0.85rem] border border-violet-300/18 bg-violet-500/12 px-3 py-2.5 text-sm font-medium text-violet-50 transition hover:bg-violet-500/18 sm:flex-none"
+          >
+            Ask Vanta
+          </button>
+        </div>
+      </form>
+
+      <p className="mt-2 px-1 text-xs leading-5 text-white/32">
+        Opens normal web pages in your browser. Vanta can use the same query when you press Ask Vanta.
+      </p>
+    </div>
   );
 }
 
