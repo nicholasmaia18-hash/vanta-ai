@@ -45,6 +45,16 @@ const WEB_SEARCH_ENGINES = [
     buildUrl: (query) => `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
   },
 ];
+const EMPTY_WEB_VIEW = {
+  active: false,
+  status: "idle",
+  kind: "search",
+  query: "",
+  title: "",
+  summary: "",
+  externalSearchUrl: "",
+  results: [],
+};
 const PROMPT_PRESETS = [
   { label: "Explain", value: "Explain this clearly in simple terms:" },
   { label: "Summarize", value: "Summarize this into the key points:" },
@@ -878,6 +888,7 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [webSearchQuery, setWebSearchQuery] = useState("");
   const [webSearchEngine, setWebSearchEngine] = useState(WEB_SEARCH_ENGINES[0].id);
+  const [webView, setWebView] = useState(EMPTY_WEB_VIEW);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [visionCooldown, setVisionCooldown] = useState(0);
@@ -2228,9 +2239,10 @@ export default function Home() {
     });
   }
 
-  function openWebSearch(event) {
+  async function openWebSearch(event) {
     event?.preventDefault?.();
 
+    const query = webSearchQuery.trim();
     const target = buildWebSearchTarget(webSearchQuery, webSearchEngine);
     if (!target) {
       setBanner({
@@ -2240,11 +2252,68 @@ export default function Home() {
       return;
     }
 
-    window.open(target, "_blank", "noopener,noreferrer");
-    setBanner({
-      tone: "success",
-      message: target.startsWith("http") ? "Opened in a new browser tab." : "Search opened.",
+    setWebView({
+      ...EMPTY_WEB_VIEW,
+      active: true,
+      status: "loading",
+      query,
+      title: query,
+      summary: "Loading inside Vanta...",
+      externalSearchUrl: target,
     });
+
+    try {
+      const response = await fetch(
+        `/api/search?q=${encodeURIComponent(query)}&engine=${encodeURIComponent(
+          webSearchEngine
+        )}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || "Search could not be loaded.");
+      }
+
+      setWebView({
+        ...EMPTY_WEB_VIEW,
+        ...data,
+        active: true,
+        status: "ready",
+        query: data.query || query,
+        title: data.title || query,
+        summary:
+          data.summary ||
+          "Vanta opened a safe internal search view. Choose a result to open the full page.",
+        externalSearchUrl: data.externalSearchUrl || target,
+        results: Array.isArray(data.results) ? data.results : [],
+      });
+      setBanner({
+        tone: "success",
+        message: "Opened inside Vanta.",
+      });
+    } catch (error) {
+      setWebView({
+        ...EMPTY_WEB_VIEW,
+        active: true,
+        status: "error",
+        query,
+        title: query,
+        summary:
+          error?.message ||
+          "Vanta could not load search cards. You can still open the normal result page.",
+        externalSearchUrl: target,
+        results: [],
+      });
+      setBanner({
+        tone: "error",
+        message: "Vanta could not load in-app search results.",
+      });
+    }
+  }
+
+  function closeWebView() {
+    setWebView(EMPTY_WEB_VIEW);
   }
 
   function askVantaAboutWebSearch() {
@@ -2646,6 +2715,8 @@ export default function Home() {
                 handlePaste={handlePaste}
                 sendMessage={sendMessage}
                 voiceSupported={voiceSupported}
+                webView={webView}
+                closeWebView={closeWebView}
                 webSearchEngine={webSearchEngine}
                 webSearchQuery={webSearchQuery}
                 resetConversation={resetConversation}
@@ -2834,6 +2905,8 @@ function WorkspaceHeader({
   handlePaste,
   sendMessage,
   voiceSupported,
+  webView,
+  closeWebView,
   webSearchEngine,
   webSearchQuery,
   resetConversation,
@@ -2882,7 +2955,17 @@ function WorkspaceHeader({
         setEngine={setWebSearchEngine}
         openWebSearch={openWebSearch}
         askVantaAboutWebSearch={askVantaAboutWebSearch}
+        webView={webView}
+        closeWebView={closeWebView}
       />
+
+      {webView.active && (
+        <WebSearchPanel
+          webView={webView}
+          askVantaAboutWebSearch={askVantaAboutWebSearch}
+          closeWebView={closeWebView}
+        />
+      )}
 
       <div className="mb-3 shrink-0 border-b border-white/6 pb-3 sm:mb-4 sm:pb-4">
         <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -3460,7 +3543,13 @@ function BrowserSearchChrome({
   setEngine,
   openWebSearch,
   askVantaAboutWebSearch,
+  webView,
+  closeWebView,
 }) {
+  const searchTabTitle = webView?.active
+    ? webView.query || webView.title || "Search"
+    : "Search";
+
   return (
     <div className="mb-3 rounded-[1rem] border border-blue-400/18 bg-[#050916] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:mb-4">
       <div className="mb-2 flex items-center gap-2 overflow-x-auto">
@@ -3468,9 +3557,22 @@ function BrowserSearchChrome({
           <span className="truncate">Vanta AI</span>
           <span className="text-blue-100/38">x</span>
         </div>
-        <div className="hidden min-w-[136px] items-center justify-between rounded-[0.75rem] border border-white/8 bg-white/[0.035] px-3 py-2 text-sm text-white/45 sm:flex">
-          <span className="truncate">Search</span>
-          <span className="text-white/24">x</span>
+        <div
+          className={`hidden min-w-[150px] items-center justify-between rounded-[0.75rem] border px-3 py-2 text-sm sm:flex ${
+            webView?.active
+              ? "border-violet-300/18 bg-violet-500/10 text-violet-50"
+              : "border-white/8 bg-white/[0.035] text-white/45"
+          }`}
+        >
+          <span className="truncate">{searchTabTitle}</span>
+          <button
+            type="button"
+            onClick={closeWebView}
+            className="ml-3 text-white/32 transition hover:text-white/70"
+            aria-label="Close Vanta search tab"
+          >
+            x
+          </button>
         </div>
         <Link
           href="/arcade"
@@ -3530,7 +3632,7 @@ function BrowserSearchChrome({
             type="submit"
             className="flex-1 rounded-[0.85rem] border border-blue-300/20 bg-blue-500/14 px-3 py-2.5 text-sm font-medium text-blue-50 transition hover:bg-blue-500/20 sm:flex-none"
           >
-            Open
+            Open in Vanta
           </button>
           <button
             type="button"
@@ -3543,9 +3645,142 @@ function BrowserSearchChrome({
       </form>
 
       <p className="mt-2 px-1 text-xs leading-5 text-white/32">
-        Opens normal web pages in your browser. Vanta can use the same query when you press Ask Vanta.
+        Searches open as a Vanta tab first. Click a result only when you want the full page.
       </p>
     </div>
+  );
+}
+
+function WebSearchPanel({ webView, askVantaAboutWebSearch, closeWebView }) {
+  const isLoading = webView.status === "loading";
+  const isError = webView.status === "error";
+  const results = Array.isArray(webView.results) ? webView.results : [];
+
+  return (
+    <section className="mb-3 rounded-[1rem] border border-blue-300/14 bg-[#070b16] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] sm:mb-4 sm:rounded-[1.2rem] sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-blue-300/16 bg-blue-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-blue-100/70">
+              Vanta tab
+            </span>
+            <span
+              className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.2em] ${
+                isError
+                  ? "border-red-300/16 bg-red-500/10 text-red-100/76"
+                  : isLoading
+                    ? "border-violet-300/16 bg-violet-500/10 text-violet-100/76"
+                    : "border-emerald-300/16 bg-emerald-500/10 text-emerald-100/76"
+              }`}
+            >
+              {isLoading ? "Loading" : isError ? "Limited" : "Inside Vanta"}
+            </span>
+          </div>
+          <h3 className="mt-3 truncate text-xl font-semibold tracking-[-0.04em] text-white sm:text-2xl">
+            {webView.title || webView.query || "Search"}
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-white/48">
+            {webView.summary ||
+              "Vanta shows safe search context here. Some sites block full-page embedding, so use Open site when you need the original page."}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={askVantaAboutWebSearch}
+            className="rounded-[0.85rem] border border-violet-300/18 bg-violet-500/12 px-3 py-2 text-sm font-medium text-violet-50 transition hover:bg-violet-500/18"
+          >
+            Ask Vanta
+          </button>
+          <button
+            type="button"
+            onClick={closeWebView}
+            className="rounded-[0.85rem] border border-white/8 bg-white/[0.035] px-3 py-2 text-sm text-white/58 transition hover:bg-white/[0.07] hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {[0, 1].map((item) => (
+            <div
+              key={item}
+              className="h-28 animate-pulse rounded-[0.95rem] border border-white/6 bg-white/[0.035]"
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-3">
+          {results.length > 0 ? (
+            results.map((result, index) => (
+              <article
+                key={`${result.url || result.title}-${index}`}
+                className="rounded-[0.95rem] border border-white/7 bg-[#11141d] p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/30">
+                      {result.source || "Search result"}
+                    </p>
+                    <h4 className="mt-2 text-base font-medium text-white">
+                      {result.title || result.url || "Result"}
+                    </h4>
+                    {result.snippet && (
+                      <p className="mt-2 text-sm leading-6 text-white/50">
+                        {result.snippet}
+                      </p>
+                    )}
+                    {result.url && (
+                      <p className="mt-2 truncate text-xs text-blue-100/38">
+                        {result.url}
+                      </p>
+                    )}
+                  </div>
+
+                  {result.url && (
+                    <a
+                      href={result.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-[0.8rem] border border-blue-300/16 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-50 transition hover:bg-blue-500/18"
+                    >
+                      Open site
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="rounded-[0.95rem] border border-white/7 bg-[#11141d] p-4">
+              <p className="text-sm leading-6 text-white/55">
+                Vanta did not find search cards for this query yet. Try a clearer search,
+                or open the full search page.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {webView.externalSearchUrl && (
+        <div className="mt-4 flex flex-col gap-2 rounded-[0.95rem] border border-white/7 bg-white/[0.025] p-3 text-sm text-white/42 sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Need the real page? This opens outside Vanta because most search sites block
+            being embedded.
+          </span>
+          <a
+            href={webView.externalSearchUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 rounded-[0.8rem] border border-white/8 px-3 py-2 text-white/62 transition hover:bg-white/[0.06] hover:text-white"
+          >
+            Open full search
+          </a>
+        </div>
+      )}
+    </section>
   );
 }
 
