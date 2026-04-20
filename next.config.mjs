@@ -1,5 +1,3 @@
-const isLocalDevelopment = process.env.NODE_ENV !== "production";
-
 const securityHeaders = [
   {
     key: "X-Content-Type-Options",
@@ -42,13 +40,9 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
-  ...(isLocalDevelopment
-    ? {
-        turbopack: {
-          root: "C:/Users/nicho/my-ai-site",
-        },
-      }
-    : {}),
+  turbopack: {
+    root: process.cwd(),
+  },
   async headers() {
     return [
       {

@@ -41,19 +41,19 @@ const PROMPT_PRESETS = [
 ];
 const STARTER_PROMPTS = [
   {
-    title: "Summarize notes",
-    prompt: "Summarize this article into five takeaways.",
-    hint: "Turn rough material into a short list of what matters.",
+    title: "Analyze a screenshot",
+    prompt: "Look at this screenshot and explain the most important thing I should notice.",
+    hint: "Upload or paste an image, then ask Vanta to read the situation.",
   },
   {
-    title: "Draft a message",
-    prompt: "Help me turn these notes into a polished email.",
-    hint: "Write a cleaner email, DM, or status update.",
+    title: "Clean up writing",
+    prompt: "Rewrite this so it sounds clear, direct, and professional:",
+    hint: "Turn rough text into something ready to send.",
   },
   {
-    title: "Review a screenshot",
-    prompt: "Look at this screenshot and explain what stands out.",
-    hint: "Break down an interface, error, or visual detail.",
+    title: "Solve a problem",
+    prompt: "Walk me through this step by step and tell me what to try first:",
+    hint: "Use it for errors, homework practice, setup issues, or planning.",
   },
 ];
 const SCHOOL_SUPPORT_OPTIONS = [
@@ -83,7 +83,7 @@ const DEFAULT_ASSISTANT_MESSAGE = {
   id: "default-assistant",
   role: "assistant",
   content:
-    "Vanta is online. Ask a question to begin.\n\nI can also help with:\n- research mode with web context\n- pasted screenshots and images\n- files, code, and quick exports",
+    "Vanta is ready. Start with a question, screenshot, file, or rough idea.\n\nBest for:\n- clear explanations\n- writing and editing\n- screenshots, code, and step-by-step help",
 };
 const MAX_REQUEST_HISTORY = 120;
 const REQUEST_CONTEXT_MESSAGES = 18;
@@ -2492,7 +2492,7 @@ export default function Home() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              className={`relative mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-hidden rounded-[1.15rem] border bg-[#111217]/94 p-3 shadow-[0_10px_40px_rgba(0,0,0,0.24)] sm:rounded-[1.55rem] sm:p-5 lg:overflow-visible ${
+              className={`relative mx-auto flex min-h-0 w-full max-w-[1040px] flex-1 flex-col overflow-hidden rounded-[1.15rem] border bg-[#101116]/96 p-3 shadow-[0_14px_46px_rgba(0,0,0,0.18)] sm:rounded-[1.55rem] sm:p-5 lg:overflow-visible ${
                 dragActive ? "border-violet-400/35" : "border-white/8"
               }`}
             >
@@ -2777,18 +2777,12 @@ function WorkspaceHeader({
             </h2>
             <p className="mt-1.5 max-w-2xl text-sm leading-6 text-white/42 sm:mt-2">
               {hasUserMessages
-                ? "Continue the thread, switch tools only when needed, and keep the prompt focused on one task at a time."
-                : "Ask a question, drop in a file, or paste a screenshot to start the conversation."}
+                ? "Continue the thread with the same context. Switch tools only when the task needs them."
+                : "Start with one clear task. Add screenshots, files, or web context only when they help."}
             </p>
           </div>
 
           <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 pr-1 sm:mx-0 sm:gap-2.5 lg:max-w-[560px] lg:flex-wrap lg:justify-end lg:overflow-visible">
-            <Link
-              href="/pricing"
-              className="shrink-0 rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2.5 text-sm font-medium text-violet-100 transition hover:bg-violet-500/16"
-            >
-              Upgrade
-            </Link>
             <select
               value={activeModel}
               onChange={(event) => changeModel(event.target.value)}
@@ -2808,7 +2802,7 @@ function WorkspaceHeader({
                   : "border-white/8 bg-[#16171d] text-white/70 hover:bg-white/[0.05]"
                 }`}
             >
-              {researchMode ? "Web context on" : "Web context off"}
+              {researchMode ? "Web on" : "Web off"}
             </button>
             <button
               onClick={() => setShowPromptEditor((current) => !current)}
@@ -2899,7 +2893,7 @@ function WorkspaceHeader({
         <span className="text-white/18">|</span>
         <span>Shift+Enter adds a new line</span>
         <span className="text-white/18">|</span>
-        <span>{voiceSupported ? "Voice input is available" : "Voice input is unavailable"}</span>
+        <span>{voiceSupported ? "Voice ready" : "Voice unavailable"}</span>
       </div>
 
       {pendingAttachments.length > 0 && (
@@ -2936,17 +2930,16 @@ function WorkspaceHeader({
       <div className="min-h-0 flex-1 overflow-y-auto rounded-[1.05rem] border border-white/6 bg-[#0d0e13] p-3 sm:rounded-[1.35rem] sm:p-5 lg:min-h-[460px]">
         <div className="space-y-4">
           {!hasUserMessages && (
-            <div className="mx-auto max-w-3xl rounded-[1.05rem] border border-white/6 bg-[#14151b] p-4 sm:rounded-[1.2rem] sm:p-6">
-              <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-white/34">
-                Start here
+            <div className="mx-auto max-w-3xl rounded-[1.05rem] border border-white/6 bg-[#14151b]/82 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] sm:rounded-[1.2rem] sm:p-6">
+              <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-violet-100/42">
+                Ready when you are
               </p>
               <h3 className="mt-3 text-[1.6rem] font-semibold tracking-[-0.04em] text-white sm:text-[2rem]">
-                How can Vanta help?
+                Start with the thing in front of you.
               </h3>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-white/46">
-                Ask a question, drop in a file, or paste a screenshot. Vanta keeps
-                history in this browser only, so the workspace stays simple and
-                private by default.
+                Ask a direct question, paste a screenshot, or drop in a file.
+                Vanta keeps the interface quiet so the answer stays the focus.
               </p>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -2954,7 +2947,7 @@ function WorkspaceHeader({
                   <button
                     key={starter.title}
                     onClick={() => setInput(starter.prompt)}
-                    className="rounded-[1rem] border border-white/8 bg-[#101117] px-4 py-4 text-left text-sm leading-6 text-white/68 transition hover:border-white/14 hover:bg-white/[0.04] hover:text-white"
+                    className="rounded-[1rem] border border-white/8 bg-[#101117] px-4 py-4 text-left text-sm leading-6 text-white/68 transition hover:border-violet-300/18 hover:bg-violet-500/[0.055] hover:text-white"
                   >
                     <span className="block text-white">{starter.title}</span>
                     <span className="mt-2 block text-white/46">{starter.hint}</span>
@@ -2962,16 +2955,16 @@ function WorkspaceHeader({
                 ))}
               </div>
 
-              <div className="mt-5 rounded-[1rem] border border-violet-400/12 bg-violet-500/[0.045] p-4">
+              <div className="mt-5 rounded-[1rem] border border-violet-400/10 bg-violet-500/[0.035] p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-violet-100/45">
-                      Check my work
+                      Study assist
                     </p>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-white/48">
                       Choose a focused mode for Reading Plus, i-Ready, or IXL.
-                      Vanta can review your attempt, explain the reasoning, and
-                      show how to handle the next one.
+                      Vanta reviews your attempt, explains the reasoning, and
+                      helps you handle the next one.
                     </p>
                   </div>
                 </div>
@@ -3019,10 +3012,10 @@ function WorkspaceHeader({
             return (
               <div
                 key={message.id || index}
-                className={`max-w-[92%] rounded-[1.05rem] px-4 py-3 sm:max-w-[85%] sm:rounded-[1.2rem] sm:px-5 sm:py-4 ${
+                className={`group max-w-[92%] rounded-[1.05rem] px-4 py-3 transition-colors sm:max-w-[85%] sm:rounded-[1.2rem] sm:px-5 sm:py-4 ${
                   message.role === "user"
-                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/88 via-violet-600/76 to-fuchsia-600/62 text-white shadow-[0_10px_24px_rgba(76,29,149,0.16)]"
-                    : "border border-white/6 bg-[#15161c] text-white"
+                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/86 via-violet-600/74 to-fuchsia-600/58 text-white shadow-[0_10px_24px_rgba(76,29,149,0.14)]"
+                    : "border border-white/6 bg-[#15161c]/94 text-white hover:border-white/10"
                 } ${message.pinned ? "ring-1 ring-violet-300/30" : ""} ${
                   message.favorite ? "shadow-[0_12px_32px_rgba(168,85,247,0.14)]" : ""
                 }`}
@@ -3056,23 +3049,28 @@ function WorkspaceHeader({
                   {messageText.trim() && (
                     <button
                       onClick={() => copyMessage(messageText, message.id || index)}
-                      className="text-xs text-white/40 transition hover:text-white/75"
+                      className="text-xs text-white/40 opacity-80 transition hover:text-white/75 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                     >
                       Copy
                     </button>
                   )}
                 </div>
                 {assistantContextBadges.length > 0 && (
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    {assistantContextBadges.map((badge) => (
-                      <span
-                        key={badge}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-white/52"
-                      >
-                        {badge}
-                      </span>
-                    ))}
-                  </div>
+                  <details className="mb-3 rounded-[0.85rem] border border-white/8 bg-white/[0.025] px-3 py-2 text-xs text-white/42">
+                    <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.18em] text-white/34 transition hover:text-white/58">
+                      Reply details
+                    </summary>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {assistantContextBadges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-full border border-white/8 bg-black/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-white/46"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  </details>
                 )}
                 {showStreamingDots ? (
                   <div className="flex items-center gap-3 text-white/72">
@@ -3123,7 +3121,7 @@ function WorkspaceHeader({
                   />
                 )}
                 {!showStreamingDots && (
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
                     {message.role === "user" && !isEditing && (
                       <button
                         onClick={() => startEditingMessage(message)}
@@ -3219,8 +3217,8 @@ function WorkspaceHeader({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           rows={3}
-          placeholder="Type your message, paste a screenshot, or drag files in..."
-          className="min-h-[84px] w-full resize-none rounded-[0.9rem] border border-white/8 bg-[#0c0d12] px-4 py-3 text-base text-white outline-none placeholder:text-white/28 focus:border-violet-400/24 sm:min-h-[118px] sm:rounded-[1rem] sm:px-5 sm:py-4"
+          placeholder="Ask Vanta anything. Paste a screenshot or drag files in when needed..."
+          className="min-h-[84px] w-full resize-none rounded-[0.9rem] border border-white/8 bg-[#0b0c11] px-4 py-3 text-base leading-7 text-white outline-none placeholder:text-white/26 focus:border-violet-300/28 focus:bg-[#0a0b10] sm:min-h-[118px] sm:rounded-[1rem] sm:px-5 sm:py-4"
         />
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3232,9 +3230,9 @@ function WorkspaceHeader({
                   showPresetMenu
                     ? "border-violet-400/20 bg-violet-500/10 text-violet-100"
                     : "border-white/8 bg-transparent text-white/62 hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
-                }`}
+              }`}
               >
-                Quick actions
+                Tools
               </button>
               {showPresetMenu && (
                 <div className="absolute bottom-full left-0 z-20 mb-2 w-[min(88vw,280px)] rounded-[1rem] border border-white/8 bg-[#12091d] p-2 shadow-[0_20px_50px_rgba(0,0,0,0.32)] sm:w-[250px]">
@@ -3306,7 +3304,7 @@ function WorkspaceHeader({
               {isListening ? "Stop voice input" : "Voice input"}
             </button>
             <span className="hidden text-xs text-white/34 sm:inline">
-              Shift+Enter for a new line. Type a slash command or open Quick actions when you need a starting frame.
+              Shift+Enter for a new line. Use Tools for prompts, files, voice, and screen help.
             </span>
           </div>
 
@@ -3320,7 +3318,7 @@ function WorkspaceHeader({
             }
             className="w-full rounded-[1rem] bg-gradient-to-br from-violet-600 to-fuchsia-600 px-6 py-3 text-base font-medium text-white shadow-[0_10px_24px_rgba(76,29,149,0.22)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-white/[0.08] disabled:text-white/28 disabled:shadow-none sm:w-auto sm:py-3.5"
           >
-            {buttonLabel}
+            {buttonLabel === "Send" ? "Ask Vanta" : buttonLabel}
           </button>
         </div>
       </div>
