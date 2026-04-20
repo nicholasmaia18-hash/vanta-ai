@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AdSenseAd from "../components/adsense-ad";
 
 const proPaymentLink = process.env.NEXT_PUBLIC_VANTA_PRO_PAYMENT_LINK || "";
 const supportLink = process.env.NEXT_PUBLIC_VANTA_SUPPORT_LINK || "";
@@ -103,6 +104,8 @@ export default function PricingPage() {
             highlighted
           />
         </section>
+
+        <AdSenseAd className="min-h-[120px]" />
 
         <section className="rounded-[1.35rem] border border-white/8 bg-[#111217] p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

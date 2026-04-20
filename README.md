@@ -33,6 +33,15 @@ If you use Stripe Payment Links, set the post-payment redirect to:
 https://your-domain.com/thanks
 ```
 
+## Ads
+
+Vanta can also load Google AdSense once your site is approved. Auto ads only need your publisher ID. Manual in-app ad slots also need an ad slot ID.
+
+```bash
+NEXT_PUBLIC_ADSENSE_CLIENT=ca-pub-xxxxxxxxxxxxxxxx
+NEXT_PUBLIC_ADSENSE_SLOT=1234567890
+```
+
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
