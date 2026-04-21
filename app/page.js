@@ -3654,6 +3654,7 @@ function BrowserSearchChrome({
 function WebSearchPanel({ webView, askVantaAboutWebSearch, closeWebView }) {
   const isLoading = webView.status === "loading";
   const isError = webView.status === "error";
+  const isDirectUrl = webView.kind === "url";
   const results = Array.isArray(webView.results) ? webView.results : [];
 
   return (
@@ -3767,8 +3768,9 @@ function WebSearchPanel({ webView, askVantaAboutWebSearch, closeWebView }) {
       {webView.externalSearchUrl && (
         <div className="mt-4 flex flex-col gap-2 rounded-[0.95rem] border border-white/7 bg-white/[0.025] p-3 text-sm text-white/42 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Need the real page? This opens outside Vanta because most search sites block
-            being embedded.
+            {isDirectUrl
+              ? "Need the real site? Open it normally from here."
+              : "Need the real page? This opens outside Vanta because most search sites block being embedded."}
           </span>
           <a
             href={webView.externalSearchUrl}
@@ -3776,7 +3778,7 @@ function WebSearchPanel({ webView, askVantaAboutWebSearch, closeWebView }) {
             rel="noreferrer"
             className="shrink-0 rounded-[0.8rem] border border-white/8 px-3 py-2 text-white/62 transition hover:bg-white/[0.06] hover:text-white"
           >
-            Open full search
+            {isDirectUrl ? "Open URL" : "Open full search"}
           </a>
         </div>
       )}

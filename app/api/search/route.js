@@ -12,6 +12,34 @@ function getExternalSearchUrl(query, engine = "duckduckgo") {
   return (SEARCH_LINKS[engine] || SEARCH_LINKS.duckduckgo)(query);
 }
 
+function normalizeResultUrl(value) {
+  if (typeof value !== "string") return "";
+
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function addResult(results, result) {
+  const url = normalizeResultUrl(result.url);
+  const title = typeof result.title === "string" ? result.title.trim() : "";
+  const snippet = typeof result.snippet === "string" ? result.snippet.trim() : "";
+
+  if (!url || !title) return;
+  if (results.some((item) => item.url === url || item.title === title)) return;
+
+  results.push({
+    title,
+    snippet: snippet || "Open this result for the full page.",
+    url,
+    source: result.source || "Search",
+  });
+}
+
 function isWebUrl(value) {
   if (/^https?:\/\//i.test(value)) return true;
   if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
@@ -33,14 +61,16 @@ function flattenRelatedTopics(topics = []) {
 
   for (const topic of topics) {
     if (Array.isArray(topic.Topics)) {
-      results.push(...flattenRelatedTopics(topic.Topics));
+      for (const nestedTopic of flattenRelatedTopics(topic.Topics)) {
+        addResult(results, nestedTopic);
+      }
       continue;
     }
 
     if (!topic.FirstURL || !topic.Text) continue;
 
     const [title, ...rest] = String(topic.Text).split(" - ");
-    results.push({
+    addResult(results, {
       title: title || topic.Text,
       snippet: rest.join(" - ") || topic.Text,
       url: topic.FirstURL,
@@ -68,8 +98,9 @@ export async function GET(req) {
     return jsonNoStore({
       query,
       kind: "url",
-      title: "Ready to open",
-      summary: "This looks like a website address. Vanta keeps it as an internal tab card.",
+      title: url,
+      summary:
+        "This looks like a website address. Vanta can keep the card here, but the full page has to open normally if the site blocks embedding.",
       externalSearchUrl: url,
       results: [
         {
@@ -106,7 +137,7 @@ export async function GET(req) {
     const results = [];
 
     if (data.AbstractText && data.AbstractURL) {
-      results.push({
+      addResult(results, {
         title: data.Heading || query,
         snippet: data.AbstractText,
         url: data.AbstractURL,
@@ -115,7 +146,7 @@ export async function GET(req) {
     }
 
     if (data.Answer) {
-      results.push({
+      addResult(results, {
         title: data.Heading || "Instant answer",
         snippet: data.Answer,
         url: externalSearchUrl,
@@ -123,7 +154,19 @@ export async function GET(req) {
       });
     }
 
-    results.push(...flattenRelatedTopics(data.RelatedTopics));
+    for (const result of flattenRelatedTopics(data.RelatedTopics)) {
+      addResult(results, result);
+    }
+
+    if (results.length === 0) {
+      addResult(results, {
+        title: `Search the web for "${query}"`,
+        snippet:
+          "No instant-answer cards were found, but you can open a normal search page for full results.",
+        url: externalSearchUrl,
+        source: "Search fallback",
+      });
+    }
 
     return jsonNoStore({
       query,
@@ -131,19 +174,27 @@ export async function GET(req) {
       title: data.Heading || `Search: ${query}`,
       summary:
         data.AbstractText ||
-        "Vanta can show lightweight search context here. Open a result for the full page.",
+        "Vanta can show lightweight search context here. Open a result only when you need the full page.",
       externalSearchUrl,
       results: results.slice(0, 8),
     });
   } catch {
+    const fallbackResult = {
+      title: `Open search results for "${query}"`,
+      snippet:
+        "The internal search provider did not respond, but this link can open the full search page.",
+      url: externalSearchUrl,
+      source: "Search fallback",
+    };
+
     return jsonNoStore({
       query,
       kind: "search",
       title: `Search: ${query}`,
       summary:
-        "Vanta could not load live search cards right now. You can still open the search normally.",
+        "Vanta could not load live search cards right now, so it kept a fallback search link ready.",
       externalSearchUrl,
-      results: [],
+      results: [fallbackResult],
     });
   }
 }
