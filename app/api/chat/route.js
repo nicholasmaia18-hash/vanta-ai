@@ -420,7 +420,13 @@ async function buildRequest(messages, selectedModel, systemPrompt, researchMode)
   };
 }
 
-async function runCompletion({ primaryModel, fallbackModel, requestBody, stream }) {
+async function runCompletion({
+  primaryModel,
+  fallbackModel,
+  requestBody,
+  stream,
+  requiresVision = false,
+}) {
   try {
     const completion = await client.chat.completions.create({
       model: primaryModel,
@@ -443,7 +449,12 @@ async function runCompletion({ primaryModel, fallbackModel, requestBody, stream 
       return { completion, modelUsed: primaryModel, usedFallback: false };
     }
 
-    if (isRateLimited || !fallbackModel || fallbackModel === primaryModel) {
+    const canUseFallback =
+      fallbackModel &&
+      fallbackModel !== primaryModel &&
+      (!requiresVision || !isKnownTextOnlyModel(fallbackModel));
+
+    if (isRateLimited || !canUseFallback) {
       throw error;
     }
 
@@ -550,9 +561,6 @@ export async function POST(req) {
     const originError = validateRequestOrigin(req);
     if (originError) return respond(originError);
 
-    const rateLimitError = enforceApiRateLimit(req, "chat-write");
-    if (rateLimitError) return respond(rateLimitError);
-
     const contentType = req.headers.get("content-type") || "";
     const acceptsJson = contentType.includes("application/json");
     const acceptsText = contentType.includes("text/plain");
@@ -580,6 +588,30 @@ export async function POST(req) {
       researchMode,
     } = validateChatPayload(body);
     const systemPrompt = validatedPrompt || DEFAULT_SYSTEM_PROMPT;
+
+    const payloadCooldownKey = messages.some(messageHasImage) ? "vision" : "text";
+    const payloadProviderCooldown = getProviderCooldownRemaining(payloadCooldownKey);
+    if (payloadProviderCooldown > 0) {
+      return respond(
+        jsonNoStore(
+          {
+            error:
+              payloadCooldownKey === "vision"
+                ? "Image analysis is still cooling down on the free plan. Text messages can still work while you wait."
+                : `ShuttleAI is cooling down. Wait ${payloadProviderCooldown} seconds before sending another message.`,
+            retryAfter: payloadProviderCooldown,
+            isRateLimited: true,
+            providerRateLimited: true,
+            visionRateLimited: payloadCooldownKey === "vision",
+          },
+          { status: 429 }
+        )
+      );
+    }
+
+    const rateLimitError = enforceApiRateLimit(req, "chat-write");
+    if (rateLimitError) return respond(rateLimitError);
+
     config = await buildRequest(
       messages,
       selectedModel,

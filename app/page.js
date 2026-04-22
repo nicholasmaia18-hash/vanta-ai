@@ -109,12 +109,12 @@ const DEFAULT_ASSISTANT_MESSAGE = {
 };
 const MAX_REQUEST_HISTORY = 120;
 const REQUEST_CONTEXT_MESSAGES = 18;
-const REQUEST_VISION_CONTEXT_MESSAGES = 6;
+const REQUEST_VISION_CONTEXT_MESSAGES = 4;
 const REQUEST_ATTACHMENT_WINDOW = 4;
-const REQUEST_VISION_ATTACHMENT_WINDOW = 2;
-const MAX_IMAGE_DIMENSION = 1400;
-const IMAGE_EXPORT_QUALITY = 0.86;
-const MAX_IMAGE_DATA_CHARS = 1_800_000;
+const REQUEST_VISION_ATTACHMENT_WINDOW = 1;
+const MAX_IMAGE_DIMENSION = 1100;
+const IMAGE_EXPORT_QUALITY = 0.76;
+const MAX_IMAGE_DATA_CHARS = 1_250_000;
 const SCREEN_ASSISTANT_MESSAGE_SOURCE = "vanta-screen-assistant";
 const SCREEN_ASSISTANT_IDLE_TEXT =
   "Ask about the current screen and Vanta's answer will appear here.";
@@ -849,7 +849,9 @@ function getAssistantContextBadges(message) {
   if (message.requestContext.contextMessageCount > 0) {
     badges.push(`${message.requestContext.contextMessageCount} messages used`);
   }
-  if (message.requestContext.attachmentCount > 0) {
+  if (message.requestContext.imageIncluded) {
+    badges.push("Image included");
+  } else if (message.requestContext.attachmentCount > 0) {
     badges.push(
       `${message.requestContext.attachmentCount} attachment${
         message.requestContext.attachmentCount === 1 ? "" : "s"
@@ -861,7 +863,7 @@ function getAssistantContextBadges(message) {
 }
 
 function isProviderCooldownMessage(message) {
-  return ["provider_cooldown", "vision_cooldown"].includes(
+  return ["provider_cooldown", "rate_limit", "vision_cooldown"].includes(
     message?.requestContext?.errorType
   );
 }
@@ -1790,13 +1792,16 @@ export default function Home() {
   }) {
     const streamingMessageId = crypto.randomUUID();
     const apiMessages = prepareMessagesForRequest(requestMessages);
-    const requestHasImage = messagesIncludeImage(requestMessages);
+    const requestHasImage = messagesIncludeImage(apiMessages);
     const requestContext = {
       researchEnabled: Boolean(conversationSnapshot.researchMode),
       attachmentCount:
         requestMessages[requestMessages.length - 1]?.attachments?.length || 0,
+      imageIncluded: requestHasImage,
       customInstructions: conversationHasCustomInstructions(conversationSnapshot),
-      modelLabel: getModelDisplayName(conversationSnapshot.model),
+      modelLabel: requestHasImage
+        ? "GPT-5.4 image mode"
+        : getModelDisplayName(conversationSnapshot.model),
       contextMessageCount: apiMessages.length,
     };
     const assistantPlaceholder = {
@@ -1864,7 +1869,7 @@ export default function Home() {
           model: conversationSnapshot.model,
         });
 
-        const messagesWithoutOldCooldown = data.providerRateLimited
+        const messagesWithoutOldCooldown = data.isRateLimited || data.retryAfter
           ? visibleMessages.filter((message) => !isProviderCooldownMessage(message))
           : visibleMessages;
 
@@ -1882,7 +1887,9 @@ export default function Home() {
                   ? isVisionLimit
                     ? "vision_cooldown"
                     : "provider_cooldown"
-                  : "request_error",
+                  : data.isRateLimited
+                    ? "rate_limit"
+                    : "request_error",
               },
             },
           ],
@@ -2009,9 +2016,16 @@ export default function Home() {
     if (
       (!input.trim() && pendingAttachments.length === 0) ||
       loading ||
-      (!hasPendingImage && cooldown > 0) ||
       !activeConversation
     ) {
+      return;
+    }
+
+    if (!hasPendingImage && cooldown > 0) {
+      setBanner({
+        tone: "info",
+        message: `Vanta is cooling down for ${formatWaitDuration(cooldown)}. Wait for the timer, then send one message.`,
+      });
       return;
     }
 
@@ -2063,7 +2077,13 @@ export default function Home() {
     }
 
     const retryUsesImage = messagesIncludeImage(context.requestMessages);
-    if (!retryUsesImage && cooldown > 0) return;
+    if (!retryUsesImage && cooldown > 0) {
+      setBanner({
+        tone: "info",
+        message: `Vanta is cooling down for ${formatWaitDuration(cooldown)}. Wait for the timer, then press Retry once.`,
+      });
+      return;
+    }
 
     if (retryUsesImage && visionCooldown > 0) {
       setBanner({
@@ -2483,7 +2503,7 @@ export default function Home() {
           : "Send";
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-[#0b0b0f] text-white lg:h-auto lg:min-h-screen lg:overflow-visible">
+    <main className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,#151023_0%,#0b0b0f_42%,#07080b_100%)] text-white lg:h-auto lg:min-h-screen lg:overflow-visible">
       <div className="mx-auto flex h-full max-w-[1600px] flex-col overflow-hidden lg:min-h-screen lg:flex-row lg:overflow-visible">
         <aside className="hidden w-[300px] shrink-0 border-r border-white/6 bg-[#0f1014] lg:flex lg:flex-col">
           <div className="border-b border-white/6 px-4 py-4">
@@ -2561,16 +2581,16 @@ export default function Home() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-screen">
           <header className="shrink-0 border-b border-white/6 bg-[#0f1014]/95 px-3 py-3 backdrop-blur lg:hidden">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-violet-400/16 bg-violet-500/10 text-sm font-semibold text-violet-100">
                   V
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-white">Vanta</p>
                   <p className="text-xs text-white/38">Focused AI workspace</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex max-w-[62vw] items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
                 <button
                   onClick={() => setShowMobileConversations((current) => !current)}
                   className={`rounded-[0.9rem] border px-3 py-2 text-sm transition ${
@@ -2583,13 +2603,13 @@ export default function Home() {
                 </button>
                 <Link
                   href="/pricing"
-                  className="rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-500/16"
+                  className="hidden rounded-[0.9rem] border border-violet-300/16 bg-violet-500/10 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-500/16 min-[430px]:inline-flex"
                 >
                   Pro
                 </Link>
                 <Link
                   href="/arcade"
-                  className="rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08]"
+                  className="hidden rounded-[0.9rem] border border-white/8 bg-white/[0.04] px-3 py-2 text-sm text-white/78 transition hover:bg-white/[0.08] min-[430px]:inline-flex"
                 >
                   Arcade
                 </Link>
@@ -3017,19 +3037,19 @@ function WorkspaceHeader({
             </button>
             <button
               onClick={shareConversation}
-              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
+              className="hidden shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05] sm:inline-flex"
             >
               Share
             </button>
             <button
               onClick={exportConversation}
-              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
+              className="hidden shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05] sm:inline-flex"
             >
               Export
             </button>
             <button
               onClick={resetConversation}
-              className="shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05]"
+              className="hidden shrink-0 rounded-[0.9rem] border border-white/8 bg-[#16171d] px-3 py-2.5 text-sm text-white/70 transition hover:bg-white/[0.05] sm:inline-flex"
             >
               Reset
             </button>
@@ -3213,10 +3233,10 @@ function WorkspaceHeader({
             return (
               <div
                 key={message.id || index}
-                className={`group max-w-[92%] rounded-[1.05rem] px-4 py-3 transition-colors sm:max-w-[85%] sm:rounded-[1.2rem] sm:px-5 sm:py-4 ${
+                className={`group max-w-[94%] rounded-[1.05rem] px-4 py-3 transition-colors sm:max-w-[84%] sm:rounded-[1.2rem] sm:px-5 sm:py-4 ${
                   message.role === "user"
-                    ? "ml-auto border border-violet-300/14 bg-gradient-to-br from-violet-700/86 via-violet-600/74 to-fuchsia-600/58 text-white shadow-[0_10px_24px_rgba(76,29,149,0.14)]"
-                    : "border border-white/6 bg-[#15161c]/94 text-white hover:border-white/10"
+                    ? "ml-auto border border-violet-300/12 bg-[#6d28d9]/78 text-white shadow-[0_8px_24px_rgba(76,29,149,0.12)]"
+                    : "border border-white/6 bg-[#15161c]/88 text-white hover:border-white/10"
                 } ${message.pinned ? "ring-1 ring-violet-300/30" : ""} ${
                   message.favorite ? "shadow-[0_12px_32px_rgba(168,85,247,0.14)]" : ""
                 }`}
@@ -3322,7 +3342,13 @@ function WorkspaceHeader({
                   />
                 )}
                 {!showStreamingDots && (
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                  <div
+                    className={`mt-3 flex-wrap gap-2 text-xs opacity-100 transition-opacity ${
+                      isRetryableAssistant
+                        ? "flex"
+                        : "hidden sm:flex sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100"
+                    }`}
+                  >
                     {message.role === "user" && !isEditing && (
                       <button
                         onClick={() => startEditingMessage(message)}
@@ -3342,7 +3368,7 @@ function WorkspaceHeader({
                     )}
                     <button
                       onClick={() => toggleMessagePin(message.id)}
-                      className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                      className={`hidden rounded-[0.75rem] border px-2.5 py-1.5 transition sm:inline-flex ${
                         message.pinned
                           ? "border-violet-300/20 bg-violet-500/12 text-violet-100"
                           : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
@@ -3352,7 +3378,7 @@ function WorkspaceHeader({
                     </button>
                     <button
                       onClick={() => toggleMessageFavorite(message.id)}
-                      className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                      className={`hidden rounded-[0.75rem] border px-2.5 py-1.5 transition sm:inline-flex ${
                         message.favorite
                           ? "border-violet-300/20 bg-violet-500/12 text-violet-100"
                           : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
@@ -3364,7 +3390,7 @@ function WorkspaceHeader({
                       <>
                         <button
                           onClick={() => setMessageFeedback(message.id, "up")}
-                          className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                          className={`hidden rounded-[0.75rem] border px-2.5 py-1.5 transition sm:inline-flex ${
                             message.feedback === "up"
                               ? "border-emerald-300/20 bg-emerald-500/12 text-emerald-100"
                               : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
@@ -3374,7 +3400,7 @@ function WorkspaceHeader({
                         </button>
                         <button
                           onClick={() => setMessageFeedback(message.id, "down")}
-                          className={`rounded-[0.75rem] border px-2.5 py-1.5 transition ${
+                          className={`hidden rounded-[0.75rem] border px-2.5 py-1.5 transition sm:inline-flex ${
                             message.feedback === "down"
                               ? "border-amber-300/20 bg-amber-500/12 text-amber-100"
                               : "border-white/8 text-white/58 hover:bg-white/[0.06] hover:text-white/78"
@@ -3411,7 +3437,7 @@ function WorkspaceHeader({
         </div>
       </div>
 
-      <div className="mt-3 shrink-0 rounded-[1rem] border border-white/6 bg-[#101116] p-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.16)] sm:mt-4 sm:rounded-[1.2rem] sm:p-3">
+      <div className="sticky bottom-0 z-20 mt-2 shrink-0 rounded-[1rem] border border-white/6 bg-[#101116]/98 p-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.16)] backdrop-blur sm:static sm:mt-4 sm:rounded-[1.2rem] sm:p-3">
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
@@ -3423,15 +3449,15 @@ function WorkspaceHeader({
         />
 
         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <div className="relative" ref={presetMenuRef}>
               <button
                 onClick={() => setShowPresetMenu((current) => !current)}
-                className={`rounded-[0.82rem] border px-3 py-2 text-sm transition ${
+                className={`w-full rounded-[0.82rem] border px-3 py-2 text-sm transition sm:w-auto ${
                   showPresetMenu
                     ? "border-violet-400/20 bg-violet-500/10 text-violet-100"
                     : "border-white/8 bg-transparent text-white/62 hover:border-white/14 hover:bg-white/[0.04] hover:text-white/82"
-              }`}
+                }`}
               >
                 Tools
               </button>

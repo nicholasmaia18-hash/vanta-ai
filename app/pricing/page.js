@@ -139,6 +139,12 @@ function PlanCard({
   subdued,
 }) {
   const isDisabled = !ctaHref;
+  const isExternalLink = /^https?:\/\//i.test(ctaHref);
+  const ctaClassName = `mt-7 block w-full rounded-[1rem] px-5 py-3 text-center text-sm font-medium transition ${
+    subdued
+      ? "border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+      : "bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-[0_12px_32px_rgba(76,29,149,0.24)] hover:brightness-110"
+  }`;
 
   return (
     <article
@@ -175,14 +181,19 @@ function PlanCard({
         >
           {ctaLabel}
         </button>
+      ) : isExternalLink ? (
+        <a
+          href={ctaHref}
+          target="_blank"
+          rel="noreferrer"
+          className={ctaClassName}
+        >
+          {ctaLabel}
+        </a>
       ) : (
         <Link
           href={ctaHref}
-          className={`mt-7 block w-full rounded-[1rem] px-5 py-3 text-center text-sm font-medium transition ${
-            subdued
-              ? "border border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
-              : "bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-[0_12px_32px_rgba(76,29,149,0.24)] hover:brightness-110"
-          }`}
+          className={ctaClassName}
         >
           {ctaLabel}
         </Link>
